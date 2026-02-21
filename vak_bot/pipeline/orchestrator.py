@@ -201,9 +201,9 @@ def run_generation_pipeline(post_id: int, chat_id: int) -> None:
                 session.commit()
 
             with stage_run(session, post_id, JobStage.REVIEW):
-                valid_variants = (
+                all_variants = (
                     session.query(PostVariant)
-                    .filter(PostVariant.post_id == post_id, PostVariant.is_valid.is_(True))
+                    .filter(PostVariant.post_id == post_id)
                     .order_by(PostVariant.variant_index.asc())
                     .limit(3)
                     .all()
@@ -211,7 +211,7 @@ def run_generation_pipeline(post_id: int, chat_id: int) -> None:
                 send_review_package(
                     chat_id=chat_id,
                     post_id=post.id,
-                    image_urls=[variant.preview_url for variant in valid_variants],
+                    image_urls=[variant.preview_url for variant in all_variants],
                     caption=post.caption or "",
                     hashtags=post.hashtags or "",
                 )

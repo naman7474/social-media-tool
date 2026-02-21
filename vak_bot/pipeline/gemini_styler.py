@@ -360,7 +360,7 @@ class GeminiStyler:
         overlay_text: str | None,
     ) -> list[StyledVariant]:
         config = load_brand_config()
-        modifiers = config.get("variation_modifiers", [])[:3]
+        modifiers = config.get("variation_modifiers", [])[:1]
 
         if self.settings.dry_run:
             variants: list[StyledVariant] = []
