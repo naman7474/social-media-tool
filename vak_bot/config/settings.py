@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     gemini_image_model: str = Field(default="gemini-3-pro-image-preview", alias="GEMINI_IMAGE_MODEL")
 
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
-    claude_model: str = Field(default="claude-sonnet-4-20250514", alias="CLAUDE_MODEL")
+    claude_model: str = Field(default="claude-sonnet-4-6", alias="CLAUDE_MODEL")
 
     meta_app_id: str = Field(default="", alias="META_APP_ID")
     meta_app_secret: str = Field(default="", alias="META_APP_SECRET")

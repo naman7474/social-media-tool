@@ -26,13 +26,15 @@ _GEMINI_IMAGE_MODEL_ALIASES = {
 }
 
 _CLAUDE_MODEL_ALIASES = {
-    "claude-sonet": "claude-sonnet-4-20250514",
-    "claude-sonnet": "claude-sonnet-4-20250514",
-    "claude-sonet-latest": "claude-sonnet-4-20250514",
-    "claude-sonet-latest-mode": "claude-sonnet-4-20250514",
-    "claude-sonnet-latest": "claude-sonnet-4-20250514",
-    "claude-sonnet-latest-mode": "claude-sonnet-4-20250514",
-    "claude-sonnet-4-latest": "claude-sonnet-4-20250514",
+    "claude-sonet": "claude-sonnet-4-6",
+    "claude-sonnet": "claude-sonnet-4-6",
+    "claude-sonet-latest": "claude-sonnet-4-6",
+    "claude-sonet-latest-mode": "claude-sonnet-4-6",
+    "claude-sonnet-latest": "claude-sonnet-4-6",
+    "claude-sonnet-latest-mode": "claude-sonnet-4-6",
+    "claude-sonnet-4-latest": "claude-sonnet-4-6",
+    "claude-sonnet-4-20250514": "claude-sonnet-4-6",
+    "claude-sonnet-4-5-20250514": "claude-sonnet-4-6",
 }
 
 
