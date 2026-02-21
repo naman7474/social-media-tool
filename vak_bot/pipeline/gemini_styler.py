@@ -4,7 +4,6 @@ import base64
 import io
 import json
 import uuid
-from pathlib import Path
 
 import httpx
 import structlog
@@ -12,6 +11,7 @@ from PIL import Image, ImageEnhance, ImageOps
 
 from vak_bot.config import get_settings
 from vak_bot.pipeline.errors import StylingError
+from vak_bot.pipeline.llm_utils import normalize_gemini_image_model
 from vak_bot.pipeline.prompts import load_brand_config, load_styling_prompt
 from vak_bot.schemas import StyleBrief, StyledVariant
 from vak_bot.storage import R2StorageClient
@@ -58,6 +58,9 @@ class GeminiStyler:
     def __init__(self) -> None:
         self.settings = get_settings()
         self.storage = R2StorageClient()
+        self.image_model = normalize_gemini_image_model(self.settings.gemini_image_model)
+        if self.image_model != self.settings.gemini_image_model:
+            logger.info("gemini_model_normalized", configured=self.settings.gemini_image_model, normalized=self.image_model)
 
     def _build_prompt(self, style_brief: StyleBrief, overlay_text: str | None, modifier: str) -> str:
         base = load_styling_prompt()
@@ -112,10 +115,11 @@ class GeminiStyler:
             raise StylingError("Missing GOOGLE_API_KEY")
 
         generated: list[StyledVariant] = []
-        endpoint = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{self.settings.gemini_image_model}:generateContent?key={self.settings.google_api_key}"
-        )
+        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{self.image_model}:generateContent"
+        headers = {
+            "x-goog-api-key": self.settings.google_api_key,
+            "Content-Type": "application/json",
+        }
 
         # Download reference image as base64
         try:
@@ -151,7 +155,7 @@ class GeminiStyler:
 
                 try:
                     with httpx.Client(timeout=180.0) as client:
-                        resp = client.post(endpoint, json=payload)
+                        resp = client.post(endpoint, headers=headers, json=payload)
                         resp.raise_for_status()
                         data = resp.json()
                 except Exception as exc:
@@ -180,7 +184,11 @@ class GeminiStyler:
         for candidate in candidates:
             parts = candidate.get("content", {}).get("parts", [])
             for part in parts:
-                inline = part.get("inlineData")
+                inline = part.get("inlineData") or part.get("inline_data")
                 if inline and inline.get("data"):
                     return base64.b64decode(inline["data"])
+        for candidate in candidates:
+            finish_reason = candidate.get("finishReason")
+            if finish_reason:
+                raise StylingError(f"Gemini returned no image (finish_reason={finish_reason})")
         raise StylingError(f"Gemini did not return an image: {json.dumps(response_json)[:200]}")

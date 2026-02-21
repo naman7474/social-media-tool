@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-import json
-
 import httpx
 import structlog
 
 from vak_bot.config import get_settings
 from vak_bot.pipeline.errors import AnalysisError
+from vak_bot.pipeline.llm_utils import (
+    extract_openai_response_text,
+    normalize_openai_model,
+    parse_json_object,
+)
 from vak_bot.pipeline.prompts import load_analysis_prompt
 from vak_bot.schemas import StyleBrief
 
@@ -58,8 +61,11 @@ class OpenAIReferenceAnalyzer:
         user_text = f"Reference caption: {reference_caption or 'N/A'}"
 
         # Use the OpenAI Responses API (newer format for gpt-4.1+ and gpt-5 models)
+        model = normalize_openai_model(self.settings.openai_model)
+        if model != self.settings.openai_model:
+            logger.info("openai_model_normalized", configured=self.settings.openai_model, normalized=model)
         payload = {
-            "model": self.settings.openai_model,
+            "model": model,
             "input": [
                 {"role": "system", "content": prompt},
                 {
@@ -87,11 +93,19 @@ class OpenAIReferenceAnalyzer:
                 response = client.post("https://api.openai.com/v1/responses", headers=headers, json=payload)
                 response.raise_for_status()
                 data = response.json()
-                # Responses API returns output as a list of output items
-                raw_json = data["output"][0]["content"][0]["text"]
-                logger.info("openai_analysis_success", model=self.settings.openai_model)
-                parsed = json.loads(raw_json)
+                raw_text = extract_openai_response_text(data)
+                logger.info("openai_analysis_success", model=model, response_id=data.get("id"))
+                parsed = parse_json_object(raw_text)
             return StyleBrief.model_validate(parsed)
+        except httpx.HTTPStatusError as exc:
+            body_preview = exc.response.text[:400] if exc.response is not None else ""
+            logger.error(
+                "openai_analysis_http_error",
+                model=model,
+                status_code=exc.response.status_code if exc.response is not None else None,
+                body_preview=body_preview,
+            )
+            raise AnalysisError(str(exc)) from exc
         except Exception as exc:
-            logger.error("openai_analysis_failed", error=str(exc))
+            logger.error("openai_analysis_failed", model=model, error=str(exc))
             raise AnalysisError(str(exc)) from exc

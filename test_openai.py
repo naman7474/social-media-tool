@@ -7,7 +7,7 @@ import httpx
 load_dotenv()
 
 API_KEY = os.getenv("OPENAI_API_KEY", "")
-MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini-2025-08-07")
+MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
 
 if not API_KEY:
     print("ERROR: Set OPENAI_API_KEY in .env")

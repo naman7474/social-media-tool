@@ -26,13 +26,13 @@ class Settings(BaseSettings):
     databright_base_url: str = Field(default="https://api.brightdata.com", alias="DATABRIGHT_BASE_URL")
 
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
-    openai_model: str = Field(default="gpt-4o", alias="OPENAI_MODEL")
+    openai_model: str = Field(default="gpt-5-mini", alias="OPENAI_MODEL")
 
     google_api_key: str = Field(default="", alias="GOOGLE_API_KEY")
     gemini_image_model: str = Field(default="gemini-3-pro-image-preview", alias="GEMINI_IMAGE_MODEL")
 
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
-    claude_model: str = Field(default="claude-sonnet-4-5-20250514", alias="CLAUDE_MODEL")
+    claude_model: str = Field(default="claude-sonnet-4-20250514", alias="CLAUDE_MODEL")
 
     meta_app_id: str = Field(default="", alias="META_APP_ID")
     meta_app_secret: str = Field(default="", alias="META_APP_SECRET")

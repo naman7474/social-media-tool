@@ -16,6 +16,7 @@ from vak_bot.pipeline.caption_writer import ClaudeCaptionWriter
 from vak_bot.pipeline.downloader import DataBrightDownloader
 from vak_bot.pipeline.errors import PipelineError
 from vak_bot.pipeline.gemini_styler import GeminiStyler
+from vak_bot.pipeline.llm_utils import normalize_claude_model, normalize_gemini_image_model, normalize_openai_model
 from vak_bot.pipeline.saree_validator import SareeValidator
 from vak_bot.schemas import StyleBrief
 
@@ -85,6 +86,12 @@ def run_generation_pipeline(post_id: int, chat_id: int) -> None:
     styler = GeminiStyler()
     captioner = ClaudeCaptionWriter()
     validator = SareeValidator(threshold=0.6)
+    logger.info(
+        "generation_models_configured",
+        openai_model=normalize_openai_model(analyzer.settings.openai_model),
+        gemini_model=normalize_gemini_image_model(styler.settings.gemini_image_model),
+        claude_model=normalize_claude_model(captioner.settings.claude_model),
+    )
 
     with SessionLocal() as session:
         post = session.get(Post, post_id)

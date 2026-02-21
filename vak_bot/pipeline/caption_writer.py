@@ -7,6 +7,11 @@ import structlog
 
 from vak_bot.config import get_settings
 from vak_bot.pipeline.errors import CaptionError
+from vak_bot.pipeline.llm_utils import (
+    extract_anthropic_response_text,
+    normalize_claude_model,
+    parse_json_object,
+)
 from vak_bot.pipeline.prompts import load_caption_prompt
 from vak_bot.schemas import CaptionPackage, StyleBrief
 
@@ -40,8 +45,11 @@ class ClaudeCaptionWriter:
             raise CaptionError("Missing ANTHROPIC_API_KEY")
 
         prompt = load_caption_prompt()
+        model = normalize_claude_model(self.settings.claude_model)
+        if model != self.settings.claude_model:
+            logger.info("claude_model_normalized", configured=self.settings.claude_model, normalized=model)
         payload = {
-            "model": self.settings.claude_model,
+            "model": model,
             "max_tokens": 900,
             "system": prompt,
             "messages": [
@@ -79,10 +87,19 @@ class ClaudeCaptionWriter:
                 response = client.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
                 response.raise_for_status()
                 data = response.json()
-            text = data["content"][0]["text"]
-            logger.info("claude_caption_success", model=self.settings.claude_model)
-            parsed = json.loads(text)
+            text = extract_anthropic_response_text(data)
+            logger.info("claude_caption_success", model=model)
+            parsed = parse_json_object(text)
             return CaptionPackage.model_validate(parsed)
+        except httpx.HTTPStatusError as exc:
+            body_preview = exc.response.text[:400] if exc.response is not None else ""
+            logger.error(
+                "claude_caption_http_error",
+                model=model,
+                status_code=exc.response.status_code if exc.response is not None else None,
+                body_preview=body_preview,
+            )
+            raise CaptionError(str(exc)) from exc
         except Exception as exc:
-            logger.error("claude_caption_failed", error=str(exc))
+            logger.error("claude_caption_failed", model=model, error=str(exc))
             raise CaptionError(str(exc)) from exc
