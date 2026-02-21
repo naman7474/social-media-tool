@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     founder_telegram_chat_id: Optional[int] = Field(default=None, alias="FOUNDER_TELEGRAM_CHAT_ID")
 
     databright_api_key: str = Field(default="", alias="DATABRIGHT_API_KEY")
-    databright_base_url: str = Field(default="https://api.databright.co", alias="DATABRIGHT_BASE_URL")
+    databright_base_url: str = Field(default="https://api.brightdata.com", alias="DATABRIGHT_BASE_URL")
 
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     openai_model: str = Field(default="gpt-4o", alias="OPENAI_MODEL")

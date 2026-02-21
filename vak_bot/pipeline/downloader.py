@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import json
 from urllib.parse import urlparse
 
 import httpx
+import structlog
 
 from vak_bot.config import get_settings
 from vak_bot.pipeline.errors import DownloadError, PrivatePostError, UnsupportedMediaError
 from vak_bot.pipeline.interfaces import DownloadedReference
+
+logger = structlog.get_logger(__name__)
+
+BRIGHTDATA_SCRAPE_URL = "https://api.brightdata.com/datasets/v3/scrape"
+BRIGHTDATA_DATASET_ID = "gd_lk5ns7kz21pck8jpis"  # Instagram Posts dataset
 
 
 class DataBrightDownloader:
@@ -31,38 +38,80 @@ class DataBrightDownloader:
             )
 
         if not self.settings.databright_api_key:
-            raise DownloadError("Missing DATABRIGHT_API_KEY")
+            raise DownloadError("Missing DATABRIGHT_API_KEY (Bright Data API token)")
 
-        payload = {"url": source_url}
-        headers = {"Authorization": f"Bearer {self.settings.databright_api_key}"}
+        headers = {
+            "Authorization": f"Bearer {self.settings.databright_api_key}",
+            "Content-Type": "application/json",
+        }
+
+        payload = json.dumps({
+            "input": [{"url": source_url}],
+        })
 
         try:
-            with httpx.Client(timeout=60.0) as client:
+            with httpx.Client(timeout=120.0) as client:
                 response = client.post(
-                    f"{self.settings.databright_base_url.rstrip('/')}/v1/social/download",
-                    json=payload,
+                    f"{BRIGHTDATA_SCRAPE_URL}?dataset_id={BRIGHTDATA_DATASET_ID}&notify=false&include_errors=true",
                     headers=headers,
+                    content=payload,
                 )
                 response.raise_for_status()
-                data = response.json()
+                results = response.json()
         except Exception as exc:
+            logger.error("bright_data_request_failed", error=str(exc))
             raise DownloadError(str(exc)) from exc
 
-        if data.get("status") in {"private", "deleted"}:
-            raise PrivatePostError()
+        if not isinstance(results, list) or len(results) == 0:
+            raise DownloadError("Empty response from Bright Data")
 
-        media_type = (data.get("media_type") or "").lower()
-        if media_type in {"reel", "video", "story"}:
+        post_data = results[0]
+
+        # Check for errors in the response
+        if "error" in post_data:
+            error_msg = post_data.get("error", "Unknown error")
+            if "private" in str(error_msg).lower():
+                raise PrivatePostError()
+            raise DownloadError(f"Bright Data error: {error_msg}")
+
+        # Determine content type
+        content_type = (post_data.get("content_type") or "").lower()
+        if content_type in {"reel", "video", "igtv"}:
             raise UnsupportedMediaError()
 
-        images = data.get("images") or []
-        if not images:
-            raise DownloadError("No images returned")
+        # Extract image URLs from photos or post_content
+        image_urls: list[str] = []
+
+        # Primary: use 'photos' array (direct CDN URLs)
+        photos = post_data.get("photos") or []
+        if photos:
+            image_urls = photos
+        else:
+            # Fallback: use 'post_content' for individual media items
+            post_content = post_data.get("post_content") or []
+            for item in post_content:
+                if item.get("type", "").lower() == "photo" and item.get("url"):
+                    image_urls.append(item["url"])
+
+        if not image_urls:
+            raise DownloadError("No images found in post")
+
+        # Extract caption and hashtags
+        caption = post_data.get("description")
+        hashtags_list = post_data.get("hashtags") or []
+        hashtags = " ".join(hashtags_list) if hashtags_list else None
+
+        logger.info(
+            "bright_data_download_success",
+            source_url=source_url,
+            image_count=len(image_urls),
+            content_type=content_type,
+        )
 
         return DownloadedReference(
             source_url=source_url,
-            image_urls=images,
-            caption=data.get("caption"),
-            hashtags=data.get("hashtags"),
-            media_type="image",
+            image_urls=image_urls,
+            caption=caption,
+            hashtags=hashtags,
+            media_type="image" if content_type != "carousel" else "carousel",
         )
