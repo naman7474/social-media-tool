@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import httpx
+import structlog
 
 from vak_bot.config import get_settings
 from vak_bot.pipeline.errors import PublishError
+
+logger = structlog.get_logger(__name__)
 
 
 class MetaGraphPoster:
@@ -54,6 +57,15 @@ class MetaGraphPoster:
                 permalink = permalink_resp.json().get("permalink", "")
 
             return {"id": media_id, "permalink": permalink}
+        except httpx.HTTPStatusError as exc:
+            body = exc.response.text[:600] if exc.response is not None else ""
+            logger.error(
+                "meta_publish_http_error",
+                method="single_image",
+                status_code=exc.response.status_code if exc.response is not None else None,
+                body=body,
+            )
+            raise PublishError(f"{exc} | {body}") from exc
         except Exception as exc:
             raise PublishError(str(exc)) from exc
 
@@ -67,7 +79,8 @@ class MetaGraphPoster:
         try:
             children_ids: list[str] = []
             with httpx.Client(timeout=60.0) as client:
-                for image_url in image_urls:
+                for idx, image_url in enumerate(image_urls, start=1):
+                    logger.info("meta_carousel_child_create", position=idx, total=len(image_urls))
                     media_resp = client.post(
                         f"{self._base}/{self.settings.instagram_business_account_id}/media",
                         params=self._params(),
@@ -76,6 +89,7 @@ class MetaGraphPoster:
                     media_resp.raise_for_status()
                     children_ids.append(media_resp.json()["id"])
 
+                logger.info("meta_carousel_container_create", children_count=len(children_ids))
                 carousel_resp = client.post(
                     f"{self._base}/{self.settings.instagram_business_account_id}/media",
                     params=self._params(),
@@ -105,6 +119,16 @@ class MetaGraphPoster:
                 permalink = permalink_resp.json().get("permalink", "")
 
             return {"id": media_id, "permalink": permalink}
+        except httpx.HTTPStatusError as exc:
+            body = exc.response.text[:600] if exc.response is not None else ""
+            logger.error(
+                "meta_publish_http_error",
+                method="carousel",
+                status_code=exc.response.status_code if exc.response is not None else None,
+                body=body,
+                children_created=len(children_ids),
+            )
+            raise PublishError(f"{exc} | {body}") from exc
         except Exception as exc:
             raise PublishError(str(exc)) from exc
 

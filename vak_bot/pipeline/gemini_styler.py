@@ -354,8 +354,8 @@ class GeminiStyler:
 
     def generate_variants(
         self,
-        saree_images: list[str],
-        reference_image_url: str,
+        saree_image_url: str,
+        reference_image_urls: list[str],
         style_brief: StyleBrief,
         overlay_text: str | None,
     ) -> list[StyledVariant]:
@@ -368,8 +368,8 @@ class GeminiStyler:
                 mode = "minimal" if idx == 1 else "warm" if idx == 2 else "editorial"
                 item_urls: list[str] = []
                 first_image_url = ""
-                for position, source_url in enumerate(saree_images, start=1):
-                    content = _create_placeholder_variant(source_url, mode)
+                for position, _ref_url in enumerate(reference_image_urls, start=1):
+                    content = _create_placeholder_variant(saree_image_url, mode)
                     key = f"styled/post-{uuid.uuid4().hex}/variant-{idx}/item-{position}.jpg"
                     uploaded = self.storage.upload_bytes(key, content)
                     item_urls.append(uploaded)
@@ -395,21 +395,21 @@ class GeminiStyler:
             "Content-Type": "application/json",
         }
 
-        # Download reference image as base64
+        # Download saree image once (same for all positions)
         try:
-            ref_b64, ref_mime = _download_image_as_base64(reference_image_url)
+            saree_b64, saree_mime = _download_image_as_base64(saree_image_url)
         except Exception as exc:
-            raise StylingError(f"Failed to download reference image: {exc}") from exc
+            raise StylingError(f"Failed to download saree image: {exc}") from exc
 
         for idx, modifier in enumerate(modifiers, start=1):
             prompt = self._build_prompt(style_brief, overlay_text, modifier)
             item_urls: list[str] = []
-            for position, saree_url in enumerate(saree_images, start=1):
-                # Download saree image as base64
+            for position, ref_url in enumerate(reference_image_urls, start=1):
+                # Download reference image for this carousel position
                 try:
-                    saree_b64, saree_mime = _download_image_as_base64(saree_url)
+                    ref_b64, ref_mime = _download_image_as_base64(ref_url)
                 except Exception as exc:
-                    raise StylingError(f"Failed to download saree image: {exc}") from exc
+                    raise StylingError(f"Failed to download reference image {position}: {exc}") from exc
 
                 part_style_candidates = self._part_style_candidates()
                 parts_by_style = {
@@ -427,6 +427,7 @@ class GeminiStyler:
                     "gemini_request_prepared",
                     variant=idx,
                     position=position,
+                    total_positions=len(reference_image_urls),
                     candidate_models=self._model_candidates(),
                     candidate_part_styles=part_style_candidates,
                     ref_mime=ref_mime,

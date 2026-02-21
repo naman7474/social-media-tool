@@ -52,5 +52,5 @@ def test_parse_json_object_handles_prefixed_text() -> None:
 def test_model_alias_normalization() -> None:
     assert normalize_openai_model("gpt-5-mini-latest") == "gpt-5-mini"
     assert normalize_gemini_image_model("gemini-nano-banana-pro") == "gemini-3-pro-image-preview"
-    assert normalize_claude_model("claude-sonet-latest") == "claude-sonnet-4-20250514"
-    assert normalize_claude_model("claude sonet latest mode") == "claude-sonnet-4-20250514"
+    assert normalize_claude_model("claude-sonet-latest") == "claude-sonnet-4-6"
+    assert normalize_claude_model("claude sonet latest mode") == "claude-sonnet-4-6"

@@ -17,7 +17,12 @@ def _run(coro):
         loop = None
 
     if loop and loop.is_running():
-        return asyncio.create_task(coro)
+        # Inside a running loop (e.g. Celery worker) — run in a new thread
+        # to avoid conflicts and ensure proper awaiting.
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(asyncio.run, coro)
+            return future.result(timeout=120)
     return asyncio.run(coro)
 
 

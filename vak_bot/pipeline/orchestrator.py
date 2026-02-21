@@ -126,9 +126,16 @@ def run_generation_pipeline(post_id: int, chat_id: int) -> None:
                 if not saree_sources:
                     raise PipelineError("No saree photo found for this post")
 
+                reference_urls = list(post.source_image_urls or [])
+                if not reference_urls and post.reference_image:
+                    reference_urls = [post.reference_image]
+
+                if len(reference_urls) > 1:
+                    post.media_type = "carousel"
+
                 variants = styler.generate_variants(
-                    saree_images=saree_sources,
-                    reference_image_url=post.reference_image or "",
+                    saree_image_url=saree_sources[0],
+                    reference_image_urls=reference_urls,
                     style_brief=style_brief,
                     overlay_text=None,
                 )
