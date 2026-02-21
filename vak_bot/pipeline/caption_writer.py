@@ -93,14 +93,14 @@ class ClaudeCaptionWriter:
             "output_config": {
                 "format": {
                     "type": "json_schema",
-                    "json_schema": caption_schema,
+                    "schema": caption_schema,
                 }
             },
         }
 
         headers = {
             "x-api-key": self.settings.anthropic_api_key,
-            "anthropic-version": "2025-01-01",
+            "anthropic-version": "2023-06-01",
             "content-type": "application/json",
         }
 
