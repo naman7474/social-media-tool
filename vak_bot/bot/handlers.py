@@ -80,8 +80,8 @@ async def _process_ingestion(chat_id: int, user_id: int, text: str | None, photo
         return
 
     with SessionLocal() as db:
-        if user_posts_today(db, user_id) >= 10:
-            await respond("Daily limit reached (10 posts). Try again tomorrow.")
+        if user_posts_today(db, user_id) >= 50:
+            await respond("Daily limit reached (50 posts). Try again tomorrow.")
             return
 
         product = None
