@@ -362,15 +362,20 @@ class GeminiStyler:
             text_overlay_instructions = "No text overlay needed. Do not add any text to the image."
 
         # Build template variables
+        lighting = style_brief.lighting
+        lighting_type = lighting.type if hasattr(lighting, "type") else str(lighting)
+        lighting_direction = lighting.direction if hasattr(lighting, "direction") else "ambient"
+        shadow_style = lighting.shadow_style if hasattr(lighting, "shadow_style") else "soft-diffused"
+
         template_vars = {
             "layout_type": style_brief.layout_type,
             "product_placement": style_brief.composition.product_placement,
             "whitespace": style_brief.composition.whitespace,
             "suggested_bg_for_saree": style_brief.background.suggested_bg_for_saree,
-            "surface_texture": style_brief.background.description,
-            "lighting_type": style_brief.lighting,
-            "lighting_direction": "side" if "harsh" in style_brief.lighting else "soft diffused",
-            "shadow_style": "strong defined shadows" if "harsh" in style_brief.lighting or "moody" in style_brief.lighting else "soft natural shadows",
+            "surface_texture": style_brief.background.surface_texture or style_brief.background.description,
+            "lighting_type": lighting_type,
+            "lighting_direction": lighting_direction,
+            "shadow_style": shadow_style,
             "palette_name": style_brief.color_mood.palette_name,
             "temperature": style_brief.color_mood.temperature,
             "dominant_colors": ", ".join(style_brief.color_mood.dominant_colors),
@@ -400,7 +405,7 @@ class GeminiStyler:
                 f"Layout: {style_brief.layout_type}\n"
                 f"Placement: {style_brief.composition.product_placement}\n"
                 f"Background: {style_brief.background.suggested_bg_for_saree}\n"
-                f"Lighting: {style_brief.lighting}\n"
+                f"Lighting: {lighting_type}\n"
                 f"Palette: {style_brief.color_mood.palette_name} ({style_brief.color_mood.temperature})\n"
                 f"Dominant colors: {', '.join(style_brief.color_mood.dominant_colors)}\n"
                 f"Vibe: {', '.join(style_brief.vibe_words)}\n"

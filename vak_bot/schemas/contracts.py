@@ -1,48 +1,83 @@
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from vak_bot.enums import MediaType
 
 
 class Composition(BaseModel):
-    product_placement: Literal["center", "left-third", "right-third", "diagonal", "scattered"]
-    whitespace: Literal["minimal", "moderate", "generous"]
-    text_area: Literal["top", "bottom", "left", "right", "overlay-center", "none"]
-    aspect_ratio: Literal["1:1", "4:5", "9:16"]
+    product_placement: str = "center"
+    whitespace: Literal["minimal", "moderate", "generous"] = "moderate"
+    text_area: str = "none"
+    aspect_ratio: Literal["1:1", "4:5", "9:16"] = "4:5"
+    grid_safe: Optional[bool] = None
 
 
 class ColorMood(BaseModel):
-    temperature: Literal["warm", "cool", "neutral"]
+    temperature: Literal["warm", "cool", "neutral"] = "warm"
     dominant_colors: list[str] = Field(min_length=1, max_length=6)
-    palette_name: Literal["earthy", "jewel-toned", "pastel", "monochrome", "vibrant", "muted"]
+    accent_color: Optional[str] = None
+    palette_name: str = "earthy"
 
 
 class BackgroundSpec(BaseModel):
-    type: Literal["solid-color", "gradient", "textured", "lifestyle-scene", "props", "natural"]
-    description: str
-    suggested_bg_for_saree: str
+    type: str = "textured"
+    description: str = ""
+    suggested_bg_for_saree: str = ""
+    surface_texture: Optional[str] = None
+
+
+class LightingSpec(BaseModel):
+    type: str = "natural-soft"
+    direction: str = "ambient"
+    shadow_style: str = "soft-diffused"
+
+
+class PropsSpec(BaseModel):
+    has_props: bool = False
+    suggested_props: list[str] = Field(default_factory=list)
+    prop_placement: Optional[str] = None
 
 
 class TextOverlaySpec(BaseModel):
-    has_text: bool
-    text_style: Literal["serif", "sans-serif", "handwritten", "none"]
-    text_position: Literal["top-left", "center", "bottom", "none"]
-    text_purpose: Literal["product-name", "price", "tagline", "quote", "none"]
+    has_text: bool = False
+    text_style: str = "none"
+    text_position: str = "none"
+    text_purpose: str = "none"
+    suggested_text_color: Optional[str] = None
 
 
 class StyleBrief(BaseModel):
-    layout_type: Literal["flat-lay", "draped", "on-model", "close-up", "grid", "lifestyle"]
-    composition: Composition
+    layout_type: str = "flat-lay"
+    composition: Composition = Field(default_factory=Composition)
     color_mood: ColorMood
-    background: BackgroundSpec
-    lighting: Literal["natural-soft", "natural-harsh", "studio", "golden-hour", "moody-dark", "backlit"]
-    text_overlay: TextOverlaySpec
-    content_format: Literal["single-image", "carousel", "before-after", "collage"]
+    background: BackgroundSpec = Field(default_factory=BackgroundSpec)
+    lighting: Union[LightingSpec, str] = Field(default="natural-soft")
+    props: Optional[PropsSpec] = None
+    text_overlay: TextOverlaySpec = Field(default_factory=TextOverlaySpec)
+    content_format: str = "single-image"
     vibe_words: list[str] = Field(min_length=2, max_length=5)
-    adaptation_notes: str
+    reference_has_model: Optional[bool] = None
+    adaptation_notes: str = ""
+
+    @field_validator("lighting", mode="before")
+    @classmethod
+    def _coerce_lighting(cls, v):
+        """Accept both a string and a dict for lighting."""
+        if isinstance(v, str):
+            return LightingSpec(type=v)
+        if isinstance(v, dict):
+            return LightingSpec(**v)
+        return v
+
+    @property
+    def lighting_type(self) -> str:
+        if isinstance(self.lighting, LightingSpec):
+            return self.lighting.type
+        return str(self.lighting)
+
 
 
 class CaptionPackage(BaseModel):
