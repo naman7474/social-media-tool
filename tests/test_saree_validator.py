@@ -2,7 +2,7 @@ import io
 
 from PIL import Image
 
-from vak_bot.pipeline.saree_validator import SareeValidator
+from vak_bot.pipeline.product_validator import ProductValidator
 
 
 def _make_img(color: tuple[int, int, int]) -> bytes:
@@ -12,16 +12,16 @@ def _make_img(color: tuple[int, int, int]) -> bytes:
     return buffer.getvalue()
 
 
-def test_saree_validator_scores_high_for_same_image() -> None:
-    validator = SareeValidator(threshold=0.6)
+def test_product_validator_scores_high_for_same_image() -> None:
+    validator = ProductValidator(threshold=0.6)
     original = _make_img((200, 150, 120))
     valid, score = validator.verify_preserved(original, original)
     assert valid
     assert score >= 0.99
 
 
-def test_saree_validator_scores_lower_for_different_image() -> None:
-    validator = SareeValidator(threshold=0.6)
+def test_product_validator_scores_lower_for_different_image() -> None:
+    validator = ProductValidator(threshold=0.6)
     first = _make_img((10, 10, 10))
     second = _make_img((240, 240, 240))
     valid, score = validator.verify_preserved(first, second)

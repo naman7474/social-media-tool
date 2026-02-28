@@ -1,0 +1,450 @@
+/* ═══════════════════════════════════════
+   VÂK Homepage — Wabi.ai Style
+   ═══════════════════════════════════════ */
+
+/* ── Page Container ── */
+.page {
+  position: relative;
+  min-height: 100vh;
+  background: #000;
+  color: #e8e8e8;
+  font-family: var(--font-serif), "Cormorant Garamond", Georgia, "Times New Roman", serif;
+}
+
+/* ── Sticky Nav ── */
+.nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 32px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.logo {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 22px;
+  font-weight: 500;
+  color: #fff;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+
+.logo:hover {
+  opacity: 0.8;
+}
+
+.navButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 22px;
+  border-radius: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  transition: all 0.25s ease;
+  cursor: pointer;
+}
+
+.navButton:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+}
+
+/* ── Hero Section ── */
+.hero {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 120px 24px 80px;
+}
+
+/* ── Rainbow Glow Blobs ── */
+.glowContainer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.glow1 {
+  position: absolute;
+  top: -10%;
+  right: -5%;
+  width: 700px;
+  height: 700px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg,
+      #ff6b9d33,
+      #c471ed44,
+      #4facfe33,
+      #00f2fe22,
+      #43e97b33,
+      #f9d42322,
+      #ff6b9d33);
+  filter: blur(100px);
+  animation: glowBreathe1 12s ease-in-out infinite;
+  opacity: 0.35;
+}
+
+.glow2 {
+  position: absolute;
+  bottom: -15%;
+  left: -10%;
+  width: 600px;
+  height: 600px;
+  border-radius: 50%;
+  background: conic-gradient(from 180deg,
+      #4facfe33,
+      #43e97b44,
+      #f9d42333,
+      #ff6b9d22,
+      #c471ed33,
+      #00f2fe22,
+      #4facfe33);
+  filter: blur(120px);
+  animation: glowBreathe2 16s ease-in-out infinite;
+  opacity: 0.28;
+}
+
+.glow3 {
+  position: absolute;
+  top: 40%;
+  left: 30%;
+  width: 400px;
+  height: 400px;
+  border-radius: 50%;
+  background: radial-gradient(circle,
+      rgba(196, 113, 237, 0.15),
+      rgba(79, 172, 254, 0.1),
+      transparent 70%);
+  filter: blur(80px);
+  animation: glowBreathe1 18s ease-in-out infinite reverse;
+  opacity: 0.2;
+}
+
+/* ── Announcement Pill ── */
+.announcementPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 18px;
+  border-radius: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.55);
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  margin-bottom: 48px;
+  position: relative;
+  overflow: hidden;
+}
+
+.announcementPill::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 100px;
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.06) 50%,
+      transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 4s ease-in-out infinite;
+}
+
+.announcementPill:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.pillArrow {
+  font-size: 12px;
+  transition: transform 0.2s;
+}
+
+.announcementPill:hover .pillArrow {
+  transform: translateX(2px);
+}
+
+/* ── Hero Heading ── */
+.heroHeading {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: clamp(36px, 5vw, 52px);
+  font-weight: 400;
+  color: #fff;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  text-align: center;
+  max-width: 600px;
+}
+
+/* ── Manifesto Body ── */
+.manifesto {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 0 24px 120px;
+  position: relative;
+}
+
+.paragraph {
+  font-size: clamp(18px, 2.2vw, 21px);
+  line-height: 1.72;
+  color: #e0e0e0;
+  margin-bottom: 2.2em;
+  font-weight: 300;
+}
+
+.paragraph em {
+  font-style: italic;
+  font-weight: 400;
+  color: #efefef;
+}
+
+.paragraph strong {
+  font-weight: 600;
+  color: #ffffff;
+}
+
+/* Fragmented spacing effect — the "broken ecosystem" paragraph */
+.fragmented {
+  word-spacing: 0.12em;
+  letter-spacing: 0.005em;
+}
+
+.wideSpace {
+  letter-spacing: 0.3em;
+  word-spacing: 0.4em;
+  opacity: 0.92;
+}
+
+/* ── Inline Animated Symbols ── */
+.inlineIcons {
+  display: inline-flex;
+  gap: 3px;
+  vertical-align: middle;
+  margin-right: 4px;
+  position: relative;
+  height: 28px;
+  width: 28px;
+}
+
+.iconFrame {
+  position: absolute;
+  inset: 0;
+  font-size: 22px;
+  line-height: 28px;
+  animation: iconCycle 2.4s steps(1) infinite;
+}
+
+.iconFrame:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.iconFrame:nth-child(2) {
+  animation-delay: 0.6s;
+}
+
+.iconFrame:nth-child(3) {
+  animation-delay: 1.2s;
+}
+
+.iconFrame:nth-child(4) {
+  animation-delay: 1.8s;
+}
+
+/* ── Handwriting Style ── */
+.handwriting {
+  font-style: italic;
+  font-weight: 400;
+  color: #fff;
+  position: relative;
+  display: inline-block;
+}
+
+.handwriting::after {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 100%;
+  height: 1.5px;
+  background: linear-gradient(90deg, #c471ed, #4facfe, #43e97b);
+  border-radius: 2px;
+  opacity: 0.5;
+}
+
+/* ── Animated Brand Mark ── */
+.brandMark {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  vertical-align: baseline;
+  position: relative;
+}
+
+.brandDot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: subtleFloat 3s ease-in-out infinite;
+}
+
+.brandDot:nth-child(1) {
+  background: #ff6b9d;
+  animation-delay: 0s;
+}
+
+.brandDot:nth-child(2) {
+  background: #4facfe;
+  animation-delay: 0.4s;
+}
+
+.brandDot:nth-child(3) {
+  background: #43e97b;
+  animation-delay: 0.8s;
+}
+
+/* ── Closing Section ── */
+.closing {
+  text-align: center;
+  padding: 80px 24px 40px;
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.closingHeading {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 400;
+  color: #fff;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin-bottom: 36px;
+}
+
+.ctaButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 36px;
+  border-radius: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.9);
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.ctaButton:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 0 30px rgba(196, 113, 237, 0.1), 0 0 60px rgba(79, 172, 254, 0.05);
+}
+
+/* ── Footer ── */
+.footer {
+  text-align: center;
+  padding: 48px 24px;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.footer a {
+  color: rgba(255, 255, 255, 0.35);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.footer a:hover {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.footerDot {
+  color: rgba(255, 255, 255, 0.15);
+}
+
+/* ── Scroll Reveal ── */
+.reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.8s ease, transform 0.8s ease;
+}
+
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .nav {
+    padding: 14px 20px;
+  }
+
+  .hero {
+    padding: 100px 20px 60px;
+  }
+
+  .manifesto {
+    padding: 0 20px 80px;
+  }
+
+  .glow1 {
+    width: 400px;
+    height: 400px;
+    top: -5%;
+    right: -15%;
+  }
+
+  .glow2 {
+    width: 350px;
+    height: 350px;
+    bottom: -10%;
+    left: -20%;
+  }
+
+  .glow3 {
+    display: none;
+  }
+
+  .closing {
+    padding: 60px 20px 32px;
+  }
+}

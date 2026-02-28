@@ -35,3 +35,11 @@ def test_parse_reel_command_with_url() -> None:
 def test_parse_redo_with_video_type() -> None:
     parsed = parse_message_text("redo close-up")
     assert parsed.command == "redo close-up"
+
+
+def test_parse_product_code_with_custom_pattern() -> None:
+    parsed = parse_message_text(
+        "https://www.instagram.com/p/abc123 SKU_0007",
+        product_code_pattern=r"\bSKU_\d{4}\b",
+    )
+    assert parsed.product_code == "SKU_0007"

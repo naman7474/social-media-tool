@@ -28,7 +28,7 @@ class OpenAIAnalyzerClient(Protocol):
 class GeminiStylerClient(Protocol):
     def generate_variants(
         self,
-        saree_image_url: str,
+        product_image_url: str,
         reference_image_urls: list[str],
         style_brief: StyleBrief,
         overlay_text: str | None,

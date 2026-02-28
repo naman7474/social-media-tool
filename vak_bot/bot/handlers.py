@@ -2,31 +2,27 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 
 import structlog
+from dateutil.parser import parse as parse_dt
 from aiogram import Dispatcher, F, Router
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import func
 
 from vak_bot.bot.callbacks import parse_callback
+from vak_bot.bot.brand_context import require_current_brand_context
 from vak_bot.bot.parser import is_supported_reference_url, parse_message_text
 from vak_bot.bot.sender import send_text
-from vak_bot.bot.texts import (
-    HELP_MESSAGE,
-    NEED_PHOTO_MESSAGE,
-    PROCESSING_MESSAGE,
-    REEL_DETECTED_MESSAGE,
-    UNAUTHORIZED_MESSAGE,
-    UNSUPPORTED_LINK_MESSAGE,
-    V1_SCHEDULING_MESSAGE,
-    VIDEO_PROCESSING_MESSAGE,
-    WELCOME_MESSAGE,
-)
+from vak_bot.bot.texts import load_bot_texts
 from vak_bot.config import get_settings
-from vak_bot.db.models import Post, Product, VideoJob
+from vak_bot.db.models import Brand, Post, Product, VideoJob
 from vak_bot.db.session import SessionLocal
+from vak_bot.db.tenant import get_or_create_default_brand, parse_allowed_users_csv
 from vak_bot.enums import CallbackAction, PostStatus, SessionState
+from vak_bot.pipeline.downloader import DataBrightDownloader
+from vak_bot.pipeline.prompts import load_brand_config
+from vak_bot.pipeline.route_detector import detect_media_type, resolve_pipeline_type
 from vak_bot.services.post_service import (
     create_draft_post,
     get_or_create_session,
@@ -48,17 +44,33 @@ settings = get_settings()
 
 ALBUM_CACHE: dict[str, dict] = {}
 ALBUM_LOCK = asyncio.Lock()
-VALID_VIDEO_TYPES = {"fabric-flow", "close-up", "lifestyle", "reveal"}
+VALID_VIDEO_TYPES = {"fabric-flow", "product-motion", "detail-zoom", "close-up", "lifestyle", "reveal"}
+
+
+def _current_brand_id() -> int:
+    try:
+        return require_current_brand_context().brand_id
+    except Exception:
+        try:
+            with SessionLocal() as db:
+                return get_or_create_default_brand(db).id
+        except Exception:
+            return 0
 
 
 def _is_allowed(user_id: int) -> bool:
-    allowed = settings.allowed_user_id_set
+    try:
+        with SessionLocal() as db:
+            brand = db.get(Brand, _current_brand_id())
+        allowed = parse_allowed_users_csv(brand.allowed_user_ids) if brand else settings.allowed_user_id_set
+    except Exception:
+        allowed = settings.allowed_user_id_set
     return not allowed or user_id in allowed
 
 
 async def _file_id_to_download_url(message: Message, file_id: str) -> str:
     file_info = await message.bot.get_file(file_id)
-    return f"https://api.telegram.org/file/bot{settings.telegram_bot_token}/{file_info.file_path}"
+    return f"https://api.telegram.org/file/bot{message.bot.token}/{file_info.file_path}"
 
 
 async def _extract_photo_file_ids(message: Message) -> list[str]:
@@ -85,6 +97,8 @@ def _normalize_video_type(raw: str | None) -> str | None:
     aliases = {
         "closeup": "close-up",
         "fabric flow": "fabric-flow",
+        "product motion": "product-motion",
+        "detail zoom": "detail-zoom",
     }
     normalized = aliases.get(cleaned, cleaned)
     if normalized in VALID_VIDEO_TYPES:
@@ -92,26 +106,65 @@ def _normalize_video_type(raw: str | None) -> str | None:
     return None
 
 
-async def _process_ingestion(chat_id: int, user_id: int, text: str | None, photo_urls: list[str], photo_file_ids: list[str], send_via_message: Message | None = None) -> None:
+def _product_code_pattern_for_brand(brand_id: int) -> str | None:
+    try:
+        cfg = load_brand_config(brand_id)
+    except Exception:
+        return None
+    pattern = cfg.get("product_code_pattern")
+    if isinstance(pattern, str) and pattern.strip():
+        return pattern.strip()
+    return None
+
+
+def _resolve_pipeline_type_with_preflight(source_url: str, user_text: str | None) -> str:
+    pipeline_type = resolve_pipeline_type(source_url, user_text)
+    if pipeline_type != "image":
+        return pipeline_type
+    if detect_media_type(source_url) != "unknown":
+        return pipeline_type
+
+    # Ambiguous URL (commonly Pinterest short links): use downloader metadata when available.
+    try:
+        reference = DataBrightDownloader().download_post(source_url)
+        if (reference.media_type or "").lower() == "reel":
+            return "reel"
+    except Exception:
+        pass
+    return pipeline_type
+
+
+async def _process_ingestion(
+    brand_id: int,
+    chat_id: int,
+    user_id: int,
+    text: str | None,
+    photo_urls: list[str],
+    photo_file_ids: list[str],
+    send_via_message: Message | None = None,
+) -> None:
+    texts = load_bot_texts(brand_id)
+
     async def respond(message_text: str) -> None:
         if send_via_message:
             await send_via_message.answer(message_text)
         else:
-            send_text(chat_id, message_text)
+            send_text(brand_id, chat_id, message_text)
 
-    parsed = parse_message_text(text)
+    code_pattern = _product_code_pattern_for_brand(brand_id)
+    parsed = parse_message_text(text, product_code_pattern=code_pattern)
     if not parsed.source_url or not is_supported_reference_url(parsed.source_url):
-        await respond(UNSUPPORTED_LINK_MESSAGE)
+        await respond(texts.unsupported_link_message)
         return
 
     with SessionLocal() as db:
-        if user_posts_today(db, user_id) >= 50:
-            await respond("Daily limit reached (50 posts). Try again tomorrow.")
+        if user_posts_today(db, brand_id, user_id) >= 10:
+            await respond("Daily limit reached (10 posts). Try again tomorrow.")
             return
 
         product = None
         if parsed.product_code:
-            product = lookup_product_by_code(db, parsed.product_code)
+            product = lookup_product_by_code(db, brand_id, parsed.product_code)
             if not product:
                 await respond(f"Product {parsed.product_code} not found. Send photos or a valid code.")
                 return
@@ -120,15 +173,16 @@ async def _process_ingestion(chat_id: int, user_id: int, text: str | None, photo
 
         if not photo_urls:
             # Save the reference URL in the session so photos can be sent separately
-            session = get_or_create_session(db, user_id, chat_id)
+            session = get_or_create_session(db, brand_id, user_id, chat_id)
             session.state = SessionState.AWAITING_PHOTOS.value
             session.context_json = {"pending_source_url": parsed.source_url, "product_code": parsed.product_code}
             db.commit()
-            await respond(NEED_PHOTO_MESSAGE)
+            await respond(texts.need_photo_message)
             return
 
         post = create_draft_post(
             db=db,
+            brand_id=brand_id,
             telegram_user_id=user_id,
             source_url=parsed.source_url,
             product=product,
@@ -136,17 +190,16 @@ async def _process_ingestion(chat_id: int, user_id: int, text: str | None, photo
             telegram_photo_file_ids=photo_file_ids,
         )
 
-        session = get_or_create_session(db, user_id, chat_id)
+        session = get_or_create_session(db, brand_id, user_id, chat_id)
         session.post_id = post.id
         session.state = SessionState.AWAITING_APPROVAL.value
         session.context_json = {"selected_variant": None}
         db.commit()
 
-    await respond(PROCESSING_MESSAGE)
+    await respond(texts.processing_message)
 
-    # Auto-detect media type and route to the right pipeline
-    from vak_bot.pipeline.route_detector import resolve_pipeline_type
-    pipeline_type = resolve_pipeline_type(parsed.source_url, text)
+    # Auto-detect media type and route to the right pipeline.
+    pipeline_type = _resolve_pipeline_type_with_preflight(parsed.source_url, text)
     if parsed.media_override:  # explicit user override takes priority
         pipeline_type = parsed.media_override
 
@@ -158,23 +211,24 @@ async def _process_ingestion(chat_id: int, user_id: int, text: str | None, photo
             db_update.commit()
 
     if pipeline_type == "reel":
-        await respond(REEL_DETECTED_MESSAGE)
-        process_video_post_task.delay(post.id, chat_id)
+        await respond(texts.reel_detected_message)
+        process_video_post_task.delay(post.id, chat_id, brand_id)
     else:
-        process_post_task.delay(post.id, chat_id)
+        process_post_task.delay(post.id, chat_id, brand_id)
 
 
 async def _handle_action(message: Message, action: str) -> bool:
+    brand_id = _current_brand_id()
     user_id = message.from_user.id
     chat_id = message.chat.id
 
     with SessionLocal() as db:
-        session = get_or_create_session(db, user_id, chat_id)
+        session = get_or_create_session(db, brand_id, user_id, chat_id)
         if not session.post_id:
             return False
 
         post = db.get(Post, session.post_id)
-        if not post:
+        if not post or post.brand_id != brand_id:
             return False
 
         action_lower = action.lower().strip()
@@ -192,6 +246,18 @@ async def _handle_action(message: Message, action: str) -> bool:
                     await message.answer("Video option not found. Choose 1 after preview is ready.")
                     return True
                 post.video_url = video_job.video_url
+            else:
+                from vak_bot.db.models import PostVariant
+
+                variant_exists = (
+                    db.query(PostVariant.id)
+                    .filter(PostVariant.post_id == post.id, PostVariant.brand_id == brand_id, PostVariant.variant_index == selected)
+                    .first()
+                    is not None
+                )
+                if not variant_exists:
+                    await message.answer("That option is not available yet. Choose one of the visible options.")
+                    return True
             db.commit()
             await message.answer(f"Selected option {selected}. Reply 'approve' when ready.")
             return True
@@ -209,7 +275,9 @@ async def _handle_action(message: Message, action: str) -> bool:
             if action_lower.startswith("redo "):
                 requested_video_type = _normalize_video_type(action_lower.split(" ", 1)[1])
                 if not requested_video_type:
-                    await message.answer("Unknown video style. Try: fabric-flow, close-up, lifestyle, or reveal.")
+                    await message.answer(
+                        "Unknown video style. Try: fabric-flow, product-motion, detail-zoom, close-up, lifestyle, or reveal."
+                    )
                     return True
 
             post.status = PostStatus.PROCESSING.value
@@ -221,16 +289,16 @@ async def _handle_action(message: Message, action: str) -> bool:
                 post.media_type = "reel"
                 db.commit()
                 if post.styled_image:
-                    reel_this_task.delay(post.id, chat_id)
+                    reel_this_task.delay(post.id, chat_id, brand_id)
                 else:
-                    process_video_post_task.delay(post.id, chat_id)
+                    process_video_post_task.delay(post.id, chat_id, brand_id)
                 if requested_video_type:
                     await message.answer(f"Regenerating Reel options with {requested_video_type} style...")
                 else:
                     await message.answer("Regenerating Reel options...")
             else:
                 await message.answer("Regenerating options...")
-                process_post_task.delay(post.id, chat_id)
+                process_post_task.delay(post.id, chat_id, brand_id)
             return True
 
         if action_lower == "cancel":
@@ -248,30 +316,43 @@ async def _handle_action(message: Message, action: str) -> bool:
             return True
 
         if action_lower.startswith("schedule"):
-            await message.answer(V1_SCHEDULING_MESSAGE)
+            schedule_text = action_lower.replace("schedule", "", 1).strip()
+            try:
+                scheduled_for = parse_dt(schedule_text) if schedule_text else (datetime.utcnow() + timedelta(hours=1))
+            except Exception:
+                await message.answer("Couldn't parse schedule time. Try: schedule 2026-03-10 18:30")
+                return True
+            if scheduled_for.tzinfo is None:
+                scheduled_for = scheduled_for.replace(tzinfo=timezone.utc)
+            post.status = PostStatus.SCHEDULED.value
+            post.scheduled_for = scheduled_for.astimezone(timezone.utc)
+            post.scheduled_timezone = "UTC"
+            session.state = SessionState.IDLE.value
+            db.commit()
+            await message.answer(f"Scheduled for {post.scheduled_for.isoformat()} UTC.")
             return True
 
         if action_lower == "post now":
-            publish_post_task.delay(post.id, chat_id, str(user_id))
+            publish_post_task.delay(post.id, chat_id, str(user_id), brand_id)
             await message.answer("Posting now...")
             return True
 
         if session.state == SessionState.AWAITING_CAPTION_EDIT.value:
-            rewrite_caption_task.delay(post.id, chat_id, action)
+            rewrite_caption_task.delay(post.id, chat_id, action, brand_id)
             session.state = SessionState.REVIEW_READY.value
             db.commit()
             await message.answer("Updating caption...")
             return True
 
         if action_lower == "reel this":
-            reel_this_task.delay(post.id, chat_id)
+            reel_this_task.delay(post.id, chat_id, brand_id)
             await message.answer("Converting to a Reel... This takes ~5 minutes.")
             return True
 
         if action_lower == "extend" or action_lower.startswith("extend "):
             parts = action_lower.split()
             variation = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else (post.selected_variant_index or 1)
-            extend_video_task.delay(post.id, chat_id, variation)
+            extend_video_task.delay(post.id, chat_id, variation, brand_id)
             await message.answer("Extending video by 8 seconds...")
             return True
 
@@ -291,6 +372,7 @@ async def _finalize_album(media_group_id: str) -> None:
         return
 
     await _process_ingestion(
+        brand_id=payload["brand_id"],
         chat_id=payload["chat_id"],
         user_id=payload["user_id"],
         text=text,
@@ -304,22 +386,26 @@ def register_handlers(dispatcher: Dispatcher) -> None:
 
     @router.message(F.text == "/start")
     async def start_handler(message: Message) -> None:
+        texts = load_bot_texts(_current_brand_id())
         if not _is_allowed(message.from_user.id):
-            await message.answer(UNAUTHORIZED_MESSAGE)
+            await message.answer(texts.unauthorized_message)
             return
-        await message.answer(WELCOME_MESSAGE)
+        await message.answer(texts.welcome_message)
 
     @router.message(F.text == "/help")
     async def help_handler(message: Message) -> None:
+        texts = load_bot_texts(_current_brand_id())
         if not _is_allowed(message.from_user.id):
-            await message.answer(UNAUTHORIZED_MESSAGE)
+            await message.answer(texts.unauthorized_message)
             return
-        await message.answer(HELP_MESSAGE)
+        await message.answer(texts.help_message)
 
     @router.message(F.text)
     async def text_handler(message: Message) -> None:
+        brand_id = _current_brand_id()
+        texts = load_bot_texts(brand_id)
         if not _is_allowed(message.from_user.id):
-            await message.answer(UNAUTHORIZED_MESSAGE)
+            await message.answer(texts.unauthorized_message)
             return
 
         parsed = parse_message_text(message.text)
@@ -328,7 +414,7 @@ def register_handlers(dispatcher: Dispatcher) -> None:
             with SessionLocal() as db:
                 posts = (
                     db.query(Post)
-                    .filter(Post.created_by == str(message.from_user.id))
+                    .filter(Post.brand_id == brand_id, Post.created_by == str(message.from_user.id))
                     .order_by(Post.created_at.desc())
                     .limit(5)
                     .all()
@@ -348,6 +434,7 @@ def register_handlers(dispatcher: Dispatcher) -> None:
                 queued = (
                     db.query(Post)
                     .filter(
+                        Post.brand_id == brand_id,
                         Post.created_by == str(message.from_user.id),
                         Post.status.in_(
                             [PostStatus.DRAFT.value, PostStatus.PROCESSING.value, PostStatus.APPROVED.value]
@@ -371,7 +458,12 @@ def register_handlers(dispatcher: Dispatcher) -> None:
                 rows = (
                     db.query(VideoJob, Post)
                     .join(Post, VideoJob.post_id == Post.id)
-                    .filter(Post.created_by == str(message.from_user.id), VideoJob.status.in_(["pending", "generating"]))
+                    .filter(
+                        Post.brand_id == brand_id,
+                        VideoJob.brand_id == brand_id,
+                        Post.created_by == str(message.from_user.id),
+                        VideoJob.status.in_(["pending", "generating"]),
+                    )
                     .order_by(VideoJob.created_at.desc())
                     .limit(10)
                     .all()
@@ -389,6 +481,7 @@ def register_handlers(dispatcher: Dispatcher) -> None:
             with SessionLocal() as db:
                 products = (
                     db.query(Product)
+                    .filter(Product.brand_id == brand_id)
                     .order_by(Product.product_code.asc())
                     .limit(20)
                     .all()
@@ -405,16 +498,21 @@ def register_handlers(dispatcher: Dispatcher) -> None:
 
         if parsed.command == "/stats":
             with SessionLocal() as db:
-                total = db.query(func.count(Post.id)).filter(Post.created_by == str(message.from_user.id)).scalar() or 0
+                total = (
+                    db.query(func.count(Post.id))
+                    .filter(Post.brand_id == brand_id, Post.created_by == str(message.from_user.id))
+                    .scalar()
+                    or 0
+                )
                 reels = (
                     db.query(func.count(Post.id))
-                    .filter(Post.created_by == str(message.from_user.id), Post.media_type == "reel")
+                    .filter(Post.brand_id == brand_id, Post.created_by == str(message.from_user.id), Post.media_type == "reel")
                     .scalar()
                     or 0
                 )
                 posted = (
                     db.query(func.count(Post.id))
-                    .filter(Post.created_by == str(message.from_user.id), Post.status == PostStatus.POSTED.value)
+                    .filter(Post.brand_id == brand_id, Post.created_by == str(message.from_user.id), Post.status == PostStatus.POSTED.value)
                     .scalar()
                     or 0
                 )
@@ -435,11 +533,11 @@ def register_handlers(dispatcher: Dispatcher) -> None:
             post_id = int(parts[1])
             with SessionLocal() as db:
                 post = db.get(Post, post_id)
-                if not post or post.created_by != str(message.from_user.id):
+                if not post or post.brand_id != brand_id or post.created_by != str(message.from_user.id):
                     await message.answer(f"Post #{post_id} not found.")
                     return
                 post.status = PostStatus.CANCELLED.value
-                session = get_or_create_session(db, message.from_user.id, message.chat.id)
+                session = get_or_create_session(db, brand_id, message.from_user.id, message.chat.id)
                 if session.post_id == post_id:
                     session.state = SessionState.IDLE.value
                 db.commit()
@@ -448,10 +546,11 @@ def register_handlers(dispatcher: Dispatcher) -> None:
 
         if parsed.command == "/reel":
             if not parsed.source_url:
-                await message.answer("Usage: /reel <instagram_or_pinterest_link> [VAK-XXX]")
+                await message.answer("Usage: /reel <instagram_or_pinterest_link> [SKU-XXX]")
                 return
             photo_file_ids, photo_urls = await _extract_photo_urls(message)
             await _process_ingestion(
+                brand_id=brand_id,
                 chat_id=message.chat.id,
                 user_id=message.from_user.id,
                 text=message.text,
@@ -485,6 +584,7 @@ def register_handlers(dispatcher: Dispatcher) -> None:
 
         photo_file_ids, photo_urls = await _extract_photo_urls(message)
         await _process_ingestion(
+            brand_id=brand_id,
             chat_id=message.chat.id,
             user_id=message.from_user.id,
             text=message.text,
@@ -496,8 +596,10 @@ def register_handlers(dispatcher: Dispatcher) -> None:
     @router.message(F.photo, ~F.media_group_id)
     async def single_photo_handler(message: Message) -> None:
         """Handle a single photo (not part of an album)."""
+        brand_id = _current_brand_id()
+        texts = load_bot_texts(brand_id)
         if not _is_allowed(message.from_user.id):
-            await message.answer(UNAUTHORIZED_MESSAGE)
+            await message.answer(texts.unauthorized_message)
             return
 
         photo_file_ids, photo_urls = await _extract_photo_urls(message)
@@ -505,7 +607,7 @@ def register_handlers(dispatcher: Dispatcher) -> None:
 
         # Check if there's a pending reference URL from a previous text message
         with SessionLocal() as db:
-            session = get_or_create_session(db, message.from_user.id, message.chat.id)
+            session = get_or_create_session(db, brand_id, message.from_user.id, message.chat.id)
             if session.state == SessionState.AWAITING_PHOTOS.value and session.context_json:
                 pending_url = session.context_json.get("pending_source_url", "")
                 if pending_url and not caption_text:
@@ -518,6 +620,7 @@ def register_handlers(dispatcher: Dispatcher) -> None:
             return
 
         await _process_ingestion(
+            brand_id=brand_id,
             chat_id=message.chat.id,
             user_id=message.from_user.id,
             text=caption_text,
@@ -528,8 +631,10 @@ def register_handlers(dispatcher: Dispatcher) -> None:
 
     @router.message(F.media_group_id)
     async def album_handler(message: Message) -> None:
+        brand_id = _current_brand_id()
+        texts = load_bot_texts(brand_id)
         if not _is_allowed(message.from_user.id):
-            await message.answer(UNAUTHORIZED_MESSAGE)
+            await message.answer(texts.unauthorized_message)
             return
 
         photo_file_ids, photo_urls = await _extract_photo_urls(message)
@@ -540,6 +645,7 @@ def register_handlers(dispatcher: Dispatcher) -> None:
                 {
                     "chat_id": message.chat.id,
                     "user_id": message.from_user.id,
+                    "brand_id": brand_id,
                     "photo_file_ids": [],
                     "photo_urls": [],
                     "text": None,
@@ -557,6 +663,7 @@ def register_handlers(dispatcher: Dispatcher) -> None:
 
     @router.callback_query()
     async def callback_handler(callback: CallbackQuery) -> None:
+        brand_id = _current_brand_id()
         if not callback.from_user or not _is_allowed(callback.from_user.id):
             await callback.answer("Unauthorized", show_alert=True)
             return
@@ -568,16 +675,32 @@ def register_handlers(dispatcher: Dispatcher) -> None:
 
         with SessionLocal() as db:
             post = db.get(Post, parsed.post_id)
-            if not post:
+            if not post or post.brand_id != brand_id:
                 await callback.answer("Post not found", show_alert=True)
                 return
 
             if parsed.action == CallbackAction.SELECT:
+                from vak_bot.db.models import PostVariant
+
+                variant_exists = (
+                    db.query(PostVariant.id)
+                    .filter(
+                        PostVariant.brand_id == brand_id,
+                        PostVariant.post_id == parsed.post_id,
+                        PostVariant.variant_index == parsed.variant,
+                    )
+                    .first()
+                    is not None
+                )
+                if not variant_exists:
+                    await callback.message.answer("That option is not available. Try regenerating options.")
+                    await callback.answer()
+                    return
                 post.selected_variant_index = parsed.variant
                 db.commit()
                 await callback.message.answer(f"Selected option {parsed.variant}. Reply 'approve' when ready.")
             elif parsed.action == CallbackAction.EDIT_CAPTION:
-                session = get_or_create_session(db, callback.from_user.id, callback.message.chat.id)
+                session = get_or_create_session(db, brand_id, callback.from_user.id, callback.message.chat.id)
                 session.state = SessionState.AWAITING_CAPTION_EDIT.value
                 db.commit()
                 await callback.message.answer("Tell me how you want to change the caption.")
@@ -586,12 +709,12 @@ def register_handlers(dispatcher: Dispatcher) -> None:
                 db.commit()
                 if post.media_type == "reel":
                     if post.styled_image:
-                        reel_this_task.delay(post.id, callback.message.chat.id)
+                        reel_this_task.delay(post.id, callback.message.chat.id, brand_id)
                     else:
-                        process_video_post_task.delay(post.id, callback.message.chat.id)
+                        process_video_post_task.delay(post.id, callback.message.chat.id, brand_id)
                     await callback.message.answer("Regenerating Reel options...")
                 else:
-                    process_post_task.delay(post.id, callback.message.chat.id)
+                    process_post_task.delay(post.id, callback.message.chat.id, brand_id)
                     await callback.message.answer("Regenerating options...")
             elif parsed.action == CallbackAction.CANCEL:
                 post.status = PostStatus.CANCELLED.value
@@ -606,7 +729,7 @@ def register_handlers(dispatcher: Dispatcher) -> None:
                 from vak_bot.db.models import VideoJob
                 video_job = (
                     db.query(VideoJob)
-                    .filter(VideoJob.post_id == parsed.post_id, VideoJob.variation_number == parsed.variant)
+                    .filter(VideoJob.brand_id == brand_id, VideoJob.post_id == parsed.post_id, VideoJob.variation_number == parsed.variant)
                     .first()
                 )
                 if video_job and video_job.video_url:
@@ -617,10 +740,10 @@ def register_handlers(dispatcher: Dispatcher) -> None:
                 else:
                     await callback.message.answer("Video option not found.")
             elif parsed.action == CallbackAction.EXTEND:
-                extend_video_task.delay(post.id, callback.message.chat.id, post.selected_variant_index or 1)
+                extend_video_task.delay(post.id, callback.message.chat.id, post.selected_variant_index or 1, brand_id)
                 await callback.message.answer("Extending video by 8 seconds...")
             elif parsed.action == CallbackAction.REEL_THIS:
-                reel_this_task.delay(post.id, callback.message.chat.id)
+                reel_this_task.delay(post.id, callback.message.chat.id, brand_id)
                 await callback.message.answer("Converting to a Reel... This takes ~5 minutes.")
 
         await callback.answer()

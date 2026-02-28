@@ -1,0 +1,158 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: #000000;
+    --foreground: #e8e8e8;
+    --text-muted: #999999;
+    --text-bright: #ffffff;
+    --content-width: 680px;
+
+    --glow-pink: #ff6b9d;
+    --glow-purple: #c471ed;
+    --glow-blue: #4facfe;
+    --glow-cyan: #00f2fe;
+    --glow-green: #43e97b;
+    --glow-yellow: #f9d423;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+    font-size: 20px;
+    line-height: 1.7;
+  }
+
+  ::selection {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+  }
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* ── Rainbow Glow Animations ── */
+@keyframes glowBreathe1 {
+
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: translate(0, 0) scale(1);
+  }
+
+  33% {
+    opacity: 0.45;
+    transform: translate(15px, -10px) scale(1.04);
+  }
+
+  66% {
+    opacity: 0.35;
+    transform: translate(-10px, 8px) scale(0.97);
+  }
+}
+
+@keyframes glowBreathe2 {
+
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translate(0, 0) scale(1);
+  }
+
+  40% {
+    opacity: 0.4;
+    transform: translate(-20px, 12px) scale(1.06);
+  }
+
+  70% {
+    opacity: 0.3;
+    transform: translate(10px, -8px) scale(0.98);
+  }
+}
+
+/* ── Pill Shimmer ── */
+@keyframes shimmer {
+  0% {
+    background-position: -200% center;
+  }
+
+  100% {
+    background-position: 200% center;
+  }
+}
+
+/* ── Icon Cycle (4 frames) ── */
+@keyframes iconCycle {
+
+  0%,
+  24.9% {
+    opacity: 1;
+  }
+
+  25%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ── Fade-in on scroll (fallback for no-JS) ── */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Handwriting Draw ── */
+@keyframes handwriteDraw {
+  0% {
+    clip-path: inset(0 100% 0 0);
+  }
+
+  100% {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+/* ── Subtle float for decorative elements ── */
+@keyframes subtleFloat {
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-6px);
+  }
+}

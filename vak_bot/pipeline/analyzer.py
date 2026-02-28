@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import httpx
 import structlog
 
@@ -10,15 +12,16 @@ from vak_bot.pipeline.llm_utils import (
     normalize_openai_model,
     parse_json_object,
 )
-from vak_bot.pipeline.prompts import load_analysis_prompt, load_video_analysis_prompt
+from vak_bot.pipeline.prompts import load_analysis_prompt, load_brand_config, load_video_analysis_prompt
 from vak_bot.schemas import StyleBrief
 
 logger = structlog.get_logger(__name__)
 
 
 class OpenAIReferenceAnalyzer:
-    def __init__(self) -> None:
+    def __init__(self, brand_id: int | None = None) -> None:
         self.settings = get_settings()
+        self.brand_id = brand_id
 
     def analyze_reference(self, reference_image_url: str, reference_caption: str | None, is_video: bool = False) -> StyleBrief:
         if self.settings.dry_run:
@@ -38,8 +41,8 @@ class OpenAIReferenceAnalyzer:
                     },
                     "background": {
                         "type": "textured",
-                        "description": "Beige textured surface with brass accents",
-                        "suggested_bg_for_saree": "Warm neutral cloth backdrop with marigold petals and brass diya",
+                        "description": "Beige textured surface with soft natural accents",
+                        "suggested_background": "Warm neutral cloth backdrop with subtle handcrafted props",
                     },
                     "lighting": "natural-soft",
                     "text_overlay": {
@@ -50,19 +53,30 @@ class OpenAIReferenceAnalyzer:
                     },
                     "content_format": "single-image",
                     "vibe_words": ["elegant", "warm", "artisan"],
-                    "adaptation_notes": "Keep saree fully accurate; add Indian props around it only.",
+                    "adaptation_notes": "Keep the original product fully accurate; use minimal supporting props.",
                 }
             )
 
         if not self.settings.openai_api_key:
             raise AnalysisError("Missing OPENAI_API_KEY")
 
-        prompt = load_analysis_prompt()
+        prompt = load_analysis_prompt(self.brand_id)
         if is_video:
-            video_addon = load_video_analysis_prompt()
+            video_addon = load_video_analysis_prompt(self.brand_id)
             if video_addon:
                 prompt = f"{prompt}\n\n{video_addon}"
-        user_text = f"Reference caption: {reference_caption or 'N/A'}"
+        brand_cfg = load_brand_config(self.brand_id)
+        brand_context = {
+            "brand": brand_cfg.get("brand", {}),
+            "visual_identity": brand_cfg.get("visual_identity", {}),
+            "display_styles": brand_cfg.get("display_styles", {}),
+            "product_vocabulary": brand_cfg.get("product_vocabulary", {}),
+            "variation_modifiers": brand_cfg.get("variation_modifiers", [])[:3],
+        }
+        user_text = (
+            f"Reference caption: {reference_caption or 'N/A'}\n\n"
+            f"Brand context JSON: {json.dumps(brand_context)}"
+        )
 
         # Use the OpenAI Responses API (newer format for gpt-4.1+ and gpt-5 models)
         model = normalize_openai_model(self.settings.openai_model)

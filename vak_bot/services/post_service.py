@@ -5,20 +5,25 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from vak_bot.db.models import Post, Product, ProductPhoto, TelegramSession
+from vak_bot.db.models import Post, Product, TelegramSession
 from vak_bot.enums import MediaType, PostStatus, SessionState
 
 
-def get_or_create_session(db: Session, telegram_user_id: int, chat_id: int) -> TelegramSession:
+def get_or_create_session(db: Session, brand_id: int, telegram_user_id: int, chat_id: int) -> TelegramSession:
     record = (
         db.query(TelegramSession)
-        .filter(TelegramSession.telegram_user_id == str(telegram_user_id), TelegramSession.chat_id == str(chat_id))
+        .filter(
+            TelegramSession.brand_id == brand_id,
+            TelegramSession.telegram_user_id == str(telegram_user_id),
+            TelegramSession.chat_id == str(chat_id),
+        )
         .first()
     )
     if record:
         return record
 
     record = TelegramSession(
+        brand_id=brand_id,
         telegram_user_id=str(telegram_user_id),
         chat_id=str(chat_id),
         state=SessionState.IDLE.value,
@@ -30,18 +35,18 @@ def get_or_create_session(db: Session, telegram_user_id: int, chat_id: int) -> T
     return record
 
 
-def user_posts_today(db: Session, telegram_user_id: int) -> int:
+def user_posts_today(db: Session, brand_id: int, telegram_user_id: int) -> int:
     start = datetime.now(timezone.utc) - timedelta(days=1)
     return (
         db.query(func.count(Post.id))
-        .filter(Post.created_by == str(telegram_user_id), Post.created_at >= start)
+        .filter(Post.brand_id == brand_id, Post.created_by == str(telegram_user_id), Post.created_at >= start)
         .scalar()
         or 0
     )
 
 
-def lookup_product_by_code(db: Session, product_code: str) -> Product | None:
-    return db.query(Product).filter(Product.product_code == product_code.upper()).first()
+def lookup_product_by_code(db: Session, brand_id: int, product_code: str) -> Product | None:
+    return db.query(Product).filter(Product.brand_id == brand_id, Product.product_code == product_code.upper()).first()
 
 
 def product_photo_urls(product: Product) -> list[str]:
@@ -51,6 +56,7 @@ def product_photo_urls(product: Product) -> list[str]:
 
 def create_draft_post(
     db: Session,
+    brand_id: int,
     telegram_user_id: int,
     source_url: str,
     product: Product | None,
@@ -59,6 +65,7 @@ def create_draft_post(
 ) -> Post:
     media_type = MediaType.CAROUSEL.value if len(input_photo_urls) > 1 else MediaType.SINGLE.value
     post = Post(
+        brand_id=brand_id,
         created_by=str(telegram_user_id),
         product_id=product.id if product else None,
         reference_url=source_url,

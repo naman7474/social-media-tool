@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Optional
 from urllib.parse import urlparse
 
-PRODUCT_CODE_REGEX = re.compile(r"\bVAK-\d{3,}\b", re.IGNORECASE)
+DEFAULT_PRODUCT_CODE_PATTERN = r"\b[A-Z]{2,12}-\d{2,}\b"
 URL_REGEX = re.compile(r"https?://\S+")
 
 
@@ -28,8 +29,18 @@ def extract_first_url(text: str) -> Optional[str]:
     return match.group(0).strip()
 
 
-def extract_product_code(text: str) -> Optional[str]:
-    match = PRODUCT_CODE_REGEX.search(text or "")
+@lru_cache(maxsize=32)
+def _compile_product_code_regex(pattern: str) -> re.Pattern[str]:
+    return re.compile(pattern, re.IGNORECASE)
+
+
+def extract_product_code(text: str, pattern: str | None = None) -> Optional[str]:
+    candidate_pattern = (pattern or "").strip() or DEFAULT_PRODUCT_CODE_PATTERN
+    try:
+        regex = _compile_product_code_regex(candidate_pattern)
+    except re.error:
+        regex = _compile_product_code_regex(DEFAULT_PRODUCT_CODE_PATTERN)
+    match = regex.search(text or "")
     if not match:
         return None
     return match.group(0).upper()
@@ -42,7 +53,7 @@ def is_supported_reference_url(url: str) -> bool:
     return host in SUPPORTED_HOSTS or any(host.endswith(f".{h}") for h in SUPPORTED_HOSTS)
 
 
-def parse_message_text(text: str | None) -> ParsedMessage:
+def parse_message_text(text: str | None, product_code_pattern: str | None = None) -> ParsedMessage:
     text = (text or "").strip()
     if not text:
         return ParsedMessage(command=None, source_url=None, product_code=None, free_text=None)
@@ -54,7 +65,7 @@ def parse_message_text(text: str | None) -> ParsedMessage:
             return ParsedMessage(
                 command=command,
                 source_url=extract_first_url(text),
-                product_code=extract_product_code(text),
+                product_code=extract_product_code(text, pattern=product_code_pattern),
                 free_text=text,
                 media_override="reel",
             )
@@ -71,7 +82,7 @@ def parse_message_text(text: str | None) -> ParsedMessage:
     return ParsedMessage(
         command=None,
         source_url=extract_first_url(text),
-        product_code=extract_product_code(text),
+        product_code=extract_product_code(text, pattern=product_code_pattern),
         free_text=text,
         media_override=media_override,
     )

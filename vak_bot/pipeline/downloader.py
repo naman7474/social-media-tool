@@ -32,8 +32,8 @@ class DataBrightDownloader:
             return DownloadedReference(
                 source_url=source_url,
                 image_urls=["https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=1080"],
-                caption="Hand-painted saree inspiration",
-                hashtags="#handpaintedsaree #artisanmade",
+                caption="Product inspiration post",
+                hashtags="#productdesign #brandstory",
                 media_type="image",
             )
 

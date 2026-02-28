@@ -31,7 +31,7 @@ class TestBuildVideoPrompt:
         brief = _make_style_brief("fabric-flow")
         prompt = gen.build_video_prompt(brief)
         assert "fabric" in prompt.lower()
-        assert "saree" in prompt.lower()
+        assert "product" in prompt.lower()
         assert "9:16" in prompt
 
     def test_close_up_prompt_contains_zoom(self) -> None:
@@ -59,17 +59,17 @@ class TestBuildVideoPrompt:
         assert "warm" in prompt.lower()
         assert "CRITICAL RULES" in prompt
 
-    def test_prompt_includes_critical_saree_rule(self) -> None:
+    def test_prompt_includes_critical_product_rule(self) -> None:
         gen = VeoGenerator()
         brief = _make_style_brief()
         prompt = gen.build_video_prompt(brief)
-        assert "saree" in prompt.lower()
+        assert "product" in prompt.lower()
         assert "remain EXACTLY" in prompt
 
 
 class TestVideoTypePresets:
-    def test_all_four_types_have_prompts(self) -> None:
-        expected = {"fabric-flow", "close-up", "lifestyle", "reveal"}
+    def test_all_supported_types_have_prompts(self) -> None:
+        expected = {"fabric-flow", "product-motion", "detail-zoom", "close-up", "lifestyle", "reveal"}
         assert set(VIDEO_TYPE_PROMPTS.keys()) == expected
 
     def test_each_preset_is_nonempty(self) -> None:

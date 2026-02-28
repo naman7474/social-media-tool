@@ -103,8 +103,9 @@ def _download_image_as_base64(url: str) -> tuple[str, str]:
 
 
 class GeminiStyler:
-    def __init__(self) -> None:
+    def __init__(self, brand_id: int | None = None) -> None:
         self.settings = get_settings()
+        self.brand_id = brand_id
         self.storage = R2StorageClient()
         self.api_key = self.settings.google_api_key or self.settings.gemini_api_key
         self.image_model = normalize_gemini_image_model(self.settings.gemini_image_model)
@@ -137,22 +138,22 @@ class GeminiStyler:
         prompt: str,
         ref_mime: str,
         ref_b64: str,
-        saree_mime: str,
-        saree_b64: str,
+        product_mime: str,
+        product_b64: str,
         part_style: str,
     ) -> list[dict[str, Any]]:
         if part_style == "camel":
             ref_image_part = {"inlineData": {"mimeType": ref_mime, "data": ref_b64}}
-            saree_image_part = {"inlineData": {"mimeType": saree_mime, "data": saree_b64}}
+            product_image_part = {"inlineData": {"mimeType": product_mime, "data": product_b64}}
         else:
             ref_image_part = {"inline_data": {"mime_type": ref_mime, "data": ref_b64}}
-            saree_image_part = {"inline_data": {"mime_type": saree_mime, "data": saree_b64}}
+            product_image_part = {"inline_data": {"mime_type": product_mime, "data": product_b64}}
         return [
             {"text": prompt},
             {"text": "Reference image (style inspiration):"},
             ref_image_part,
-            {"text": "Saree image (keep product accurate):"},
-            saree_image_part,
+            {"text": "Product image (keep product accurate):"},
+            product_image_part,
         ]
 
     def _build_generation_config(self, model: str, style_brief: StyleBrief) -> dict[str, Any]:
@@ -199,8 +200,8 @@ class GeminiStyler:
         prompt: str,
         ref_bytes: bytes,
         ref_mime: str,
-        saree_bytes: bytes,
-        saree_mime: str,
+        product_bytes: bytes,
+        product_mime: str,
         style_brief: StyleBrief,
         variant: int,
         position: int,
@@ -226,7 +227,7 @@ class GeminiStyler:
                         parts=[
                             genai_types.Part.from_text(text=prompt),
                             genai_types.Part.from_bytes(data=ref_bytes, mime_type=ref_mime),
-                            genai_types.Part.from_bytes(data=saree_bytes, mime_type=saree_mime),
+                            genai_types.Part.from_bytes(data=product_bytes, mime_type=product_mime),
                         ],
                     )
                 ]
@@ -338,21 +339,29 @@ class GeminiStyler:
         raise StylingError(str(last_error) if last_error is not None else "Gemini request failed")
 
     def _build_prompt(self, style_brief: StyleBrief, overlay_text: str | None, modifier: str) -> str:
-        base = load_styling_prompt()
-        config = load_brand_config()
+        base = load_styling_prompt(self.brand_id)
+        config = load_brand_config(self.brand_id)
 
         # Build props instructions from brand config based on vibe
         vibe_lower = " ".join(style_brief.vibe_words).lower()
         props_lib = config.get("props_library", {})
         if any(w in vibe_lower for w in ["warm", "festive", "rich", "celebration"]):
-            props_key = "warm_festive"
+            props_key = "warm"
         elif any(w in vibe_lower for w in ["bold", "luxe", "dramatic", "opulent"]):
-            props_key = "rich_luxe"
+            props_key = "luxe"
         elif any(w in vibe_lower for w in ["earthy", "grounded", "rustic", "organic"]):
-            props_key = "earthy_grounded"
+            props_key = "earthy"
         else:
-            props_key = "calm_minimal"
+            props_key = "minimal"
         suggested_props = props_lib.get(props_key, [])
+        if not suggested_props:
+            legacy_key_map = {
+                "warm": "warm_festive",
+                "luxe": "rich_luxe",
+                "earthy": "earthy_grounded",
+                "minimal": "calm_minimal",
+            }
+            suggested_props = props_lib.get(legacy_key_map.get(props_key, ""), [])
         props_instructions = f"Suggested props ({props_key}): {', '.join(suggested_props[:4])}" if suggested_props else "No specific props needed."
 
         # Text overlay instructions
@@ -371,18 +380,18 @@ class GeminiStyler:
         if style_brief.reference_has_model:
             model_instructions = (
                 "MODEL/PERSON SHOT: The reference image features a person/model. "
-                "Show the saree WORN or DRAPED on a person in a similar pose and framing. "
+                "Show the featured product in use or styled on a person in a similar pose and framing. "
                 "Match the model's styling, posture, and composition from the reference. "
-                "The person should look like an Indian woman, styled naturally — not a mannequin. "
-                "CRITICAL: Keep the saree's structural layout, design, colors, and motifs EXACTLY "
-                "as they are in IMAGE 2. DO NOT hallucinate new patterns or change the border/pallu. "
+                "Keep the model natural and avoid mannequin-like results. "
+                "CRITICAL: Keep the product design, texture, colors, and details EXACTLY "
+                "as they are in IMAGE 2. Do not hallucinate new product elements. "
                 "The environment, lighting, and background should match the reference mood."
             )
         else:
             model_instructions = (
                 "PRODUCT-ONLY SHOT: The reference is a product/flat-lay style image. "
-                "Do NOT include any person or model. Show the EXACT saree from IMAGE 2 as a styled product "
-                "photograph — folded, draped, or arranged on a surface with props. Do NOT change its design."
+                "Do NOT include any person or model. Show the EXACT product from IMAGE 2 as a styled product "
+                "photograph arranged on a surface with props. Do NOT change its design."
             )
 
         template_vars = {
@@ -390,7 +399,7 @@ class GeminiStyler:
             "layout_type": style_brief.layout_type,
             "product_placement": style_brief.composition.product_placement,
             "whitespace": style_brief.composition.whitespace,
-            "suggested_bg_for_saree": style_brief.background.suggested_bg_for_saree,
+            "suggested_background": style_brief.background.suggested_background,
             "surface_texture": style_brief.background.surface_texture or style_brief.background.description,
             "lighting_type": lighting_type,
             "lighting_direction": lighting_direction,
@@ -423,7 +432,7 @@ class GeminiStyler:
                 f"{base}\n\n"
                 f"Layout: {style_brief.layout_type}\n"
                 f"Placement: {style_brief.composition.product_placement}\n"
-                f"Background: {style_brief.background.suggested_bg_for_saree}\n"
+                f"Background: {style_brief.background.suggested_background}\n"
                 f"Lighting: {lighting_type}\n"
                 f"Palette: {style_brief.color_mood.palette_name} ({style_brief.color_mood.temperature})\n"
                 f"Dominant colors: {', '.join(style_brief.color_mood.dominant_colors)}\n"
@@ -434,13 +443,19 @@ class GeminiStyler:
 
     def generate_variants(
         self,
-        saree_image_url: str,
+        product_image_url: str,
         reference_image_urls: list[str],
         style_brief: StyleBrief,
         overlay_text: str | None,
     ) -> list[StyledVariant]:
-        config = load_brand_config()
-        modifiers = config.get("variation_modifiers", [])[:1]
+        config = load_brand_config(self.brand_id)
+        modifiers = config.get("variation_modifiers", [])[:3]
+        if not isinstance(modifiers, list) or not modifiers:
+            modifiers = [
+                "Minimal and gallery-like with high whitespace.",
+                "Warm and intimate with tactile textures.",
+                "Editorial and bold with controlled contrast.",
+            ]
 
         if self.settings.dry_run:
             variants: list[StyledVariant] = []
@@ -449,7 +464,7 @@ class GeminiStyler:
                 item_urls: list[str] = []
                 first_image_url = ""
                 for position, _ref_url in enumerate(reference_image_urls, start=1):
-                    content = _create_placeholder_variant(saree_image_url, mode)
+                    content = _create_placeholder_variant(product_image_url, mode)
                     key = f"styled/post-{uuid.uuid4().hex}/variant-{idx}/item-{position}.jpg"
                     uploaded = self.storage.upload_bytes(key, content)
                     item_urls.append(uploaded)
@@ -475,11 +490,11 @@ class GeminiStyler:
             "Content-Type": "application/json",
         }
 
-        # Download saree image once (same for all positions)
+        # Download product image once (same for all positions)
         try:
-            saree_b64, saree_mime = _download_image_as_base64(saree_image_url)
+            product_b64, product_mime = _download_image_as_base64(product_image_url)
         except Exception as exc:
-            raise StylingError(f"Failed to download saree image: {exc}") from exc
+            raise StylingError(f"Failed to download product image: {exc}") from exc
 
         for idx, modifier in enumerate(modifiers, start=1):
             prompt = self._build_prompt(style_brief, overlay_text, modifier)
@@ -497,8 +512,8 @@ class GeminiStyler:
                         prompt=prompt,
                         ref_mime=ref_mime,
                         ref_b64=ref_b64,
-                        saree_mime=saree_mime,
-                        saree_b64=saree_b64,
+                        product_mime=product_mime,
+                        product_b64=product_b64,
                         part_style=part_style,
                     )
                     for part_style in part_style_candidates
@@ -511,7 +526,7 @@ class GeminiStyler:
                     candidate_models=self._model_candidates(),
                     candidate_part_styles=part_style_candidates,
                     ref_mime=ref_mime,
-                    saree_mime=saree_mime,
+                    product_mime=product_mime,
                     using_sdk=self._sdk_client is not None,
                 )
 
@@ -519,8 +534,8 @@ class GeminiStyler:
                     prompt=prompt,
                     ref_bytes=base64.b64decode(ref_b64),
                     ref_mime=ref_mime,
-                    saree_bytes=base64.b64decode(saree_b64),
-                    saree_mime=saree_mime,
+                    product_bytes=base64.b64decode(product_b64),
+                    product_mime=product_mime,
                     style_brief=style_brief,
                     variant=idx,
                     position=position,

@@ -4,10 +4,18 @@ from vak_bot.schemas.contracts import (
     Composition,
     IngestionRequest,
     PostResult,
+    ReviewPackage,
+    ReviewVariant,
     ReelCaptionPackage,
     StyleBrief,
     StyledVariant,
     VideoAnalysis,
+)
+from vak_bot.schemas.brand_config import (
+    BrandAIConfig,
+    build_category_template,
+    get_category_template_map,
+    validate_ai_config,
 )
 
 __all__ = [
@@ -19,5 +27,11 @@ __all__ = [
     "VideoAnalysis",
     "ApprovalPayload",
     "PostResult",
+    "ReviewPackage",
+    "ReviewVariant",
     "Composition",
+    "BrandAIConfig",
+    "build_category_template",
+    "get_category_template_map",
+    "validate_ai_config",
 ]

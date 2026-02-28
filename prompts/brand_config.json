@@ -1,16 +1,17 @@
 {
   "brand": {
-    "name": "Vâk",
-    "pronunciation": "vaahk",
-    "meaning": "Sanskrit for voice",
-    "tagline": "Your clothes speak before you do.",
-    "pillars": [
-      "VOICE",
-      "HAND",
-      "ONE"
-    ],
-    "website": "https://vakstudio.in",
-    "instagram": "@vak_studios"
+    "name": "",
+    "tagline": "",
+    "website": "",
+    "instagram": ""
+  },
+  "language": "en",
+  "product_code_pattern": "\\b[A-Z]{2,12}-\\d{2,}\\b",
+  "product_vocabulary": {
+    "singular": "product",
+    "plural": "products",
+    "featured_part": "detail",
+    "parts": {}
   },
   "colors": {
     "primary": {
@@ -18,286 +19,165 @@
       "cream": "#F5F0E8"
     },
     "secondary": {
-      "warm_gold": "#C9A96E",
-      "deep_maroon": "#6B2D3E",
-      "muted_terracotta": "#B87351",
-      "sage_green": "#7A8B6F",
-      "soft_indigo": "#4A5568"
+      "stone": "#B7B0A8",
+      "sage": "#7A8B6F"
     },
     "accent": {
-      "brass": "#D4A843",
-      "jasmine_white": "#FEFCF3",
-      "marigold": "#E8A317"
+      "warm_gold": "#C9A96E"
     },
     "usage_rules": {
       "text_on_dark_bg": "#F5F0E8",
       "text_on_light_bg": "#2C2C2C",
       "never_use": [
         "neon",
-        "electric blue",
-        "hot pink",
-        "pure white #FFFFFF",
-        "pure black #000000"
+        "oversaturated gradients"
       ]
     }
   },
   "typography": {
-    "heading_feel": "Elegant serif — think Playfair Display or Cormorant Garamond",
-    "body_feel": "Clean sans-serif — think DM Sans or Inter",
-    "overlay_feel": "For image text: serif or refined handwritten, never blocky or all-caps",
-    "devanagari": "Use when appropriate for Hindi taglines — Eczar or Noto Serif Devanagari",
+    "heading_feel": "Editorial serif",
+    "body_feel": "Clean sans-serif",
+    "overlay_feel": "Elegant display text",
     "rules": [
-      "Never use Comic Sans, Impact, or overly decorative fonts",
-      "Text overlays should feel hand-placed, not stamped",
-      "Max 6-8 words for image text overlay",
-      "Prefer sentence case over ALL CAPS"
+      "Use sentence case",
+      "Keep overlay text short"
     ]
   },
   "visual_identity": {
-    "grid_aesthetic": "Curated gallery — alternating between product close-ups, styled flat-lays, texture details, and occasional text posts. Never two similar compositions back-to-back.",
-    "dominant_mood": "Warm, tactile, intimate. Like looking at art in a quiet gallery.",
+    "grid_aesthetic": "Curated, spacious, and tactile",
+    "dominant_mood": "Warm premium",
     "avoid": [
-      "Cluttered compositions with too many props",
-      "Harsh direct flash lighting",
-      "Busy or patterned backgrounds that compete with the saree",
-      "Stock photo aesthetic — everything should feel handmade",
-      "Cool blue-toned filters",
-      "Overly saturated colors that feel digital",
-      "Symmetrical corporate layouts"
+      "Busy cluttered compositions",
+      "Harsh direct flash",
+      "Cheap stock image look"
     ],
     "prefer": [
-      "Generous whitespace — let the saree breathe",
-      "Warm natural or golden-hour lighting",
-      "Textured backgrounds: raw silk, handmade paper, marble, wood, terracotta",
-      "Asymmetric compositions with organic flow",
-      "Showing brushwork detail — zoom in on the hand-painting",
-      "Earth tones in backgrounds that complement (not match) the saree colors"
+      "Generous whitespace",
+      "Natural light or soft studio light",
+      "Textured physical backgrounds"
     ]
   },
   "props_library": {
-    "warm_festive": [
-      "brass diya (unlit, for texture not religion)",
-      "loose marigold petals",
-      "kumkum in a small brass bowl",
-      "gold or antique bangles (2-3 max)",
-      "silk thread spools",
-      "small brass bell",
-      "fresh turmeric root on banana leaf"
+    "warm": [
+      "ceramic bowl",
+      "textured linen",
+      "dried florals"
     ],
-    "calm_minimal": [
-      "single jasmine bud or small gajra",
-      "one small brass bowl",
-      "white muslin cloth as base",
-      "fresh green peepal or banana leaf",
-      "smooth river stones (2-3)",
-      "raw cotton boll"
+    "minimal": [
+      "single stem",
+      "neutral paper",
+      "matte stone"
     ],
-    "rich_luxe": [
-      "antique brass thali",
-      "loose pearl strings",
-      "vintage hand mirror with patina",
-      "small carved sandalwood box",
-      "silk tassels",
-      "old silver payal (anklet)"
+    "luxe": [
+      "brass tray",
+      "smoked glass",
+      "silk ribbon"
     ],
-    "earthy_grounded": [
-      "terracotta small pot or diya",
-      "jute rope or twine",
-      "dried cotton bolls on stem",
-      "raw wood slice or block",
-      "handmade paper sheets",
-      "coir or jute mat",
-      "dried palm leaf"
+    "earthy": [
+      "wood surface",
+      "terracotta",
+      "jute fabric"
     ],
     "never_use": [
-      "plastic flowers",
-      "Chinese ceramics or mass-produced decor",
-      "Western candles (use diyas instead)",
-      "wine glasses or champagne flutes",
-      "roses in cellophane",
-      "anything that looks factory-made or imported",
-      "modern electronics",
-      "branded items"
+      "plastic props",
+      "brand logos",
+      "novelty decor"
     ]
   },
-  "saree_display_styles": {
-    "draped-flowing": "Saree draped loosely over a surface, fabric flowing off the edge of frame",
-    "flat-lay-folded": "Neatly folded, shot from above. Pallu visible as the hero.",
-    "pallu-hero": "Close focus on the pallu (decorated end). Show brushwork detail.",
-    "border-detail": "Tight crop on the painted border or edge. Macro-feel.",
-    "pleated-standing": "Saree pleated like a fan, arranged vertically.",
-    "cascading": "Fabric falling from top of frame, showing full drape and flow.",
-    "bunched-texture": "Loosely bunched to show fabric weight and texture.",
-    "partial-drape": "Draped over a chair, frame, door, or architectural element."
+  "display_styles": {
+    "hero-closeup": "Tight frame on hero detail",
+    "flat-lay": "Top-down clean arrangement",
+    "lifestyle": "In-use context scene",
+    "texture-detail": "Macro detail showing material quality"
   },
   "variation_modifiers": [
-    "Minimal and gallery-like: generous whitespace, barely any props, saree as the sole focus. Think modern art exhibition.",
-    "Warm and intimate: close-up framing, rich textures visible, golden lighting, 1-2 carefully placed Indian props. Think a quiet afternoon at home.",
-    "Bold and editorial: dramatic side-lighting, strong shadows, high contrast. The saree commands attention. Think magazine cover."
+    "Minimal and gallery-like with high whitespace.",
+    "Warm and intimate with tactile textures.",
+    "Editorial and bold with controlled contrast."
   ],
   "hashtags": {
     "brand_always": [
-      "#vakstudios",
-      "#handpaintedsaree",
-      "#vakclothing",
-      "#oneofone",
-      "#yourclothesspeakbeforeyoudo"
+      "#craftedwithintent"
     ],
     "craft": [
-      "#artisanmade",
-      "#handpainted",
-      "#handpaintedfashion",
-      "#craftedwithlove",
-      "#madebyhand",
-      "#artisanindia",
-      "#handloom",
-      "#wearableart",
-      "#slowfashionindia",
-      "#craftheritage"
+      "#handcrafted",
+      "#designprocess"
     ],
-    "product_saree": [
-      "#silksaree",
-      "#handloomsaree",
-      "#puresilksaree",
-      "#sareelove",
-      "#sareelovers",
-      "#sareestyle",
-      "#indiansaree",
-      "#designersaree",
-      "#sareecollection",
-      "#sixyards"
+    "product": [
+      "#productdesign",
+      "#newdrop"
     ],
     "product_other": [
-      "#handpaintedkurta",
-      "#handpainteddupatta",
-      "#indianethnicwear",
-      "#ethnicfashion"
+      "#collection",
+      "#limitedrun"
     ],
     "discovery": [
-      "#indianfashion",
-      "#indiandesigner",
-      "#indianwear",
-      "#ethnicwear",
-      "#indianartisan",
-      "#indiantextile",
-      "#handmadeindia",
-      "#indiancraft",
-      "#supportindianartisans",
-      "#vocalforlocal"
+      "#brandstory",
+      "#smallbusiness"
     ],
     "occasion_festive": [
-      "#diwalifashion",
-      "#festivewear",
-      "#festiveseason",
-      "#indianfestival",
-      "#karwachauth",
-      "#diwalioutfit",
-      "#pujastyle",
-      "#festivesaree"
+      "#celebrationstyle"
     ],
     "occasion_wedding": [
-      "#weddingguest",
-      "#indianwedding",
-      "#weddingsaree",
-      "#sangeetoutfit",
-      "#mehendilook",
-      "#receptionlook",
-      "#indianbride",
-      "#weddinginspiration"
+      "#eventstyle"
     ],
     "occasion_everyday": [
-      "#sareeeveryday",
-      "#casualsaree",
-      "#officesaree",
-      "#weekendsaree",
-      "#sareeatwork",
-      "#effortlessstyle"
+      "#everydaystyle"
     ],
     "niche": [
-      "#paintedsilk",
-      "#textileart",
-      "#handpaintedsilk",
-      "#artisantextile",
-      "#fabricart",
-      "#handcraftedsaree",
-      "#uniquesaree",
-      "#statementwear"
+      "#materialculture"
     ],
     "never_use": [
-      "#fashion",
-      "#style",
-      "#beautiful",
-      "#love",
-      "#instagood",
-      "#photooftheday",
-      "#trending",
-      "#viral",
       "#fyp",
-      "#ootd"
+      "#viral",
+      "#trending"
     ]
   },
-  "occasions_by_mood": {
-    "calm": [
-      "Morning puja",
-      "Small family gathering",
-      "Temple visit + lunch after",
-      "Office ethnic day",
-      "Sunday brunch with friends",
-      "Just felt like wearing a saree"
-    ],
-    "bright": [
-      "Haldi ceremony",
-      "Sangeet night",
-      "Diwali party",
-      "Karva Chauth",
-      "Baby shower",
-      "Navratri celebrations",
-      "Lohri or Makar Sankranti"
-    ],
-    "strong": [
-      "Wedding reception",
-      "Cocktail night",
-      "New Year's Eve",
-      "Big anniversary dinner",
-      "Award ceremony or gala",
-      "When you want all eyes on you"
-    ],
-    "soft": [
-      "Brunch at a destination wedding",
-      "Art gallery opening",
-      "Book launch",
-      "Sunday family lunch",
-      "Casual festive get-together",
-      "Coffee date in a saree"
+  "caption_rules": {
+    "optimal_length": "150-220 words",
+    "max_length": 280,
+    "emoji_limit": 2,
+    "must_mention": [],
+    "banned_words": [
+      "must-have",
+      "best ever",
+      "limited stock hurry"
     ]
+  },
+  "occasions": {
+    "festive": [
+      "festivals",
+      "seasonal gifting"
+    ],
+    "wedding": [
+      "wedding guest",
+      "celebration dinner"
+    ],
+    "everyday": [
+      "workday",
+      "weekend outing"
+    ],
+    "campaign": [
+      "new launch",
+      "maker spotlight"
+    ],
+    "content_mix": {
+      "hero": 50,
+      "lifestyle": 25,
+      "detail": 25
+    }
   },
   "cta_rotation": [
-    "This one's on the site — link in bio.",
-    "DM us if this one caught your eye.",
-    "Only one like this. Link in bio before it's gone.",
-    "Tap the link in bio to see it up close.",
-    "Want to know the story behind this one? DM us.",
-    "This piece is available — link in bio."
+    "Save this look for later.",
+    "Tell us which detail stood out to you.",
+    "DM us for availability."
   ],
-  "caption_rules": {
-    "optimal_length": "150-250 characters for the main caption body (before hashtags)",
-    "max_length": "2200 characters including hashtags",
-    "emoji_limit": "0-2 emojis, only at the end, only if natural",
-    "line_breaks": "Use a period-on-empty-line trick for visual line breaks on Instagram",
-    "must_mention_one_of": [
-      "hand-painted",
-      "artisan",
-      "one of one",
-      "painted by hand",
-      "days not minutes"
-    ]
-  },
-  "content_mix_weekly": {
-    "product_hero": 2,
-    "detail_close_up": 1,
-    "behind_the_scenes_artisan": 1,
-    "styled_lifestyle": 1,
-    "text_or_quote_post": 0.5,
-    "carousel": 0.5
-  }
+  "sample_artisans": [
+    "Aarav",
+    "Meera",
+    "Naina"
+  ],
+  "audience_profile": "People who value quality and design-led storytelling.",
+  "brand_voice": "Warm, clear, and confident.",
+  "llm_guardrails": "Avoid hype, avoid aggressive sales language, avoid competitor mentions."
 }

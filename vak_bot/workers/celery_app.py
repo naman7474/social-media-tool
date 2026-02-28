@@ -23,6 +23,7 @@ celery_app.conf.update(
         "vak_bot.workers.tasks.rewrite_caption_task": {"queue": "pipeline"},
         "vak_bot.workers.tasks.refresh_meta_token_task": {"queue": "maintenance"},
         "vak_bot.workers.tasks.cleanup_reference_images_task": {"queue": "maintenance"},
+        "vak_bot.workers.tasks.dispatch_scheduled_posts_task": {"queue": "maintenance"},
     },
     beat_schedule={
         "refresh-meta-token-daily": {
@@ -32,6 +33,10 @@ celery_app.conf.update(
         "cleanup-reference-images-daily": {
             "task": "vak_bot.workers.tasks.cleanup_reference_images_task",
             "schedule": 86400,
+        },
+        "dispatch-scheduled-posts-every-minute": {
+            "task": "vak_bot.workers.tasks.dispatch_scheduled_posts_task",
+            "schedule": 60,
         },
     },
 )

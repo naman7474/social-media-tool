@@ -16,6 +16,7 @@ from html import unescape
 
 from vak_bot.db.session import SessionLocal
 from vak_bot.db.models import Product, ProductPhoto
+from vak_bot.db.tenant import get_or_create_default_brand
 
 CSV_PATH = "Products.csv"
 
@@ -119,6 +120,7 @@ def seed():
 
     # Insert into DB
     with SessionLocal() as session:
+        brand = get_or_create_default_brand(session)
         inserted = 0
         skipped = 0
 
@@ -126,7 +128,7 @@ def seed():
             data = products_data[shopify_id]
             code = code_map[shopify_id]
 
-            existing = session.query(Product).filter(Product.product_code == code).first()
+            existing = session.query(Product).filter(Product.brand_id == brand.id, Product.product_code == code).first()
             if existing:
                 print(f"  SKIP {code} ({data['title']}) — already exists")
                 skipped += 1
@@ -140,6 +142,7 @@ def seed():
                 fabric = parts[-1].replace("-", " ").title() if len(parts) >= 2 else fabric_raw
 
             product = Product(
+                brand_id=brand.id,
                 product_code=code,
                 product_name=data["title"],
                 product_type="Saree",
@@ -159,6 +162,7 @@ def seed():
             # Add photos
             for img in sorted(data["images"], key=lambda x: x["position"]):
                 session.add(ProductPhoto(
+                    brand_id=brand.id,
                     product_id=product.id,
                     photo_url=img["url"],
                     photo_type="product",

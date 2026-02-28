@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 from vak_bot.enums import MediaType, VideoType
 
@@ -25,7 +25,11 @@ class ColorMood(BaseModel):
 class BackgroundSpec(BaseModel):
     type: str = "textured"
     description: str = ""
-    suggested_bg_for_saree: str = ""
+    suggested_background: str = Field(
+        default="",
+        validation_alias=AliasChoices("suggested_background", "suggested_bg_for_saree"),
+        serialization_alias="suggested_background",
+    )
     surface_texture: Optional[str] = None
 
 
@@ -51,13 +55,13 @@ class TextOverlaySpec(BaseModel):
 
 class VideoAnalysis(BaseModel):
     camera_motion: str = "slow-pan"  # slow-pan, zoom-in, zoom-out, orbit, tilt-up, tilt-down, static, tracking
-    motion_type: str = "fabric-flow"  # fabric-flow, model-walk, reveal, product-rotate, parallax, morph
+    motion_type: str = "fabric-flow"  # fabric-flow, product-motion, detail-zoom, model-walk, reveal
     motion_elements: str = ""  # What should be moving
     pacing: str = "slow-dreamy"  # slow-dreamy, medium-editorial, fast-energetic
     audio_mood: str = "ambient-nature"  # ambient-nature, soft-classical, modern-minimal, upbeat, silence
     transition_style: str = "none"  # none, fade, cut, zoom-through
     recommended_duration: int = 8  # 4, 6, or 8 seconds
-    recommended_video_type: str = "fabric-flow"  # fabric-flow, close-up, lifestyle, reveal
+    recommended_video_type: str = "fabric-flow"  # fabric-flow, close-up, lifestyle, reveal, product-motion, detail-zoom
     video_adaptation_notes: str = ""
 
 
@@ -112,6 +116,20 @@ class StyledVariant(BaseModel):
     item_urls: list[str] = Field(default_factory=list)
     ssim_score: float
     is_valid: bool
+
+
+class ReviewVariant(BaseModel):
+    variant_index: int
+    preview_url: str
+    item_urls: list[str] = Field(default_factory=list)
+    quality_flags: dict[str, float | bool] = Field(default_factory=dict)
+
+
+class ReviewPackage(BaseModel):
+    post_id: int
+    variants: list[ReviewVariant] = Field(default_factory=list)
+    caption: str
+    hashtags: str
 
 
 class IngestionRequest(BaseModel):

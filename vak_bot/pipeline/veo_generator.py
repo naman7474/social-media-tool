@@ -31,33 +31,39 @@ logger = structlog.get_logger(__name__)
 
 VIDEO_TYPE_PROMPTS: dict[str, str] = {
     "fabric-flow": (
-        "Gentle breeze causes the sheer saree fabric to flow and billow softly. "
-        "The pallu lifts and catches light, revealing the translucency and "
-        "hand-painted details. Camera slowly pans across the fabric. "
-        "Soft ambient sound of fabric rustling."
+        "Gentle movement reveals material/fabric texture and craftsmanship details. "
+        "Camera slowly pans across the featured product with natural motion cues. "
+        "Soft ambient sound design."
+    ),
+    "product-motion": (
+        "Subtle cinematic movement around the product to highlight silhouette, volume, and finish. "
+        "Use controlled camera motion with premium pacing and realistic physical behavior."
+    ),
+    "detail-zoom": (
+        "Progressive macro-to-medium zoom that reveals fine product details, texture, and craftsmanship. "
+        "Maintain smooth transitions with clean editorial rhythm."
     ),
     "close-up": (
-        "Slow cinematic zoom into the hand-painted details on the saree, "
-        "revealing individual brushstrokes and color variations. Camera pulls "
-        "back slowly to show the full drape. Soft, meditative ambient music."
+        "Slow cinematic zoom into product details, revealing finish and texture. "
+        "Camera pulls back gradually to show the full composition. "
+        "Soft, meditative ambient music."
     ),
     "lifestyle": (
-        "A graceful woman wearing the saree takes a slow step forward, "
-        "the fabric flowing with her movement. Warm natural lighting. "
-        "Shallow depth of field. Cinematic fashion film aesthetic. "
+        "A natural lifestyle scene with the product in use, captured with warm lighting "
+        "and shallow depth of field. Cinematic editorial framing. "
         "Soft ambient sounds."
     ),
     "reveal": (
-        "The saree starts flat on a surface, then is slowly lifted by "
-        "an unseen hand, revealing its full drape and hand-painted motifs. "
-        "Camera tracks the fabric as it unfurls. Studio lighting. "
-        "Satisfying fabric movement sounds."
+        "The product starts in a composed still frame, then is revealed through "
+        "a smooth camera move or interaction. Studio-quality lighting. "
+        "Satisfying motion and transition pacing."
     ),
 }
 
 # Variation modifiers — currently generate a single output variation.
 VIDEO_VARIATION_MODIFIERS: list[str] = [
     "Use slow, gentle camera movement. Dreamy and meditative pacing.",
+    "Use cleaner editorial pacing with slightly stronger contrast and framing.",
 ]
 
 
@@ -87,7 +93,7 @@ class VeoGenerator:
                 elif layout == "flat-lay":
                     video_type = "reveal"
                 else:
-                    video_type = "fabric-flow"
+                    video_type = "product-motion"
 
         base_motion = VIDEO_TYPE_PROMPTS.get(video_type or "fabric-flow", VIDEO_TYPE_PROMPTS["fabric-flow"])
 
@@ -106,19 +112,18 @@ class VeoGenerator:
 
 STYLE CONTEXT:
 - Color mood: {brief.color_mood.palette_name}, {brief.color_mood.temperature} tones
-- Background: {brief.background.suggested_bg_for_saree}
+- Background: {brief.background.suggested_background}
 - Lighting: {lighting_str}
 - Vibe: {', '.join(brief.vibe_words)}
 - Camera motion: {camera_motion}
 - Pacing: {pacing}
 
 CRITICAL RULES:
-- The saree fabric, hand-painted details, and colors must remain EXACTLY as shown
-  in the starting image. Do not alter, repaint, or modify the saree.
-- Keep the video clean and elegant — luxury fashion brand aesthetic.
+- The featured product, details, and colors must remain EXACTLY as shown
+  in the starting image. Do not alter core product identity.
+- Keep the video clean and elegant — premium brand aesthetic.
 - No watermarks, no logos, no text overlays.
-- Indian context — any props should feel authentic (brass, flowers, silk).
-- Cinematic quality, editorial fashion film look.
+- Cinematic quality, editorial commercial film look.
 - Portrait orientation (9:16) for Instagram Reels."""
 
         return prompt.strip()

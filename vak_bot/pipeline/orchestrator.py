@@ -17,7 +17,7 @@ from vak_bot.pipeline.downloader import DataBrightDownloader
 from vak_bot.pipeline.errors import PipelineError, VideoQualityError
 from vak_bot.pipeline.gemini_styler import GeminiStyler
 from vak_bot.pipeline.llm_utils import normalize_claude_model, normalize_gemini_image_model, normalize_openai_model
-from vak_bot.pipeline.saree_validator import SareeValidator
+from vak_bot.pipeline.product_validator import ProductValidator
 from vak_bot.pipeline.veo_generator import VeoGenerator
 from vak_bot.pipeline.video_stitcher import extract_first_frame, compress_video
 from vak_bot.schemas import StyleBrief
@@ -27,8 +27,9 @@ logger = structlog.get_logger(__name__)
 
 
 @contextmanager
-def stage_run(session, post_id: int, stage: JobStage):
+def stage_run(session, post_id: int, stage: JobStage, brand_id: int):
     run = JobRun(
+        brand_id=brand_id,
         post_id=post_id,
         stage=stage.value,
         status=JobStatus.STARTED.value,
@@ -74,7 +75,7 @@ def _build_product_info(post: Post) -> dict:
     }
 
 
-def _resolve_saree_sources(post: Post) -> list[str]:
+def _resolve_product_sources(post: Post) -> list[str]:
     if post.input_photo_urls:
         return list(post.input_photo_urls)
     if post.product_id and post.product and post.product.photos:
@@ -83,24 +84,29 @@ def _resolve_saree_sources(post: Post) -> list[str]:
     return []
 
 
-def run_generation_pipeline(post_id: int, chat_id: int) -> None:
+def run_generation_pipeline(post_id: int, chat_id: int, brand_id: int | None = None) -> None:
     downloader = DataBrightDownloader()
-    analyzer = OpenAIReferenceAnalyzer()
-    styler = GeminiStyler()
-    captioner = ClaudeCaptionWriter()
-    validator = SareeValidator(threshold=0.6)
-    logger.info(
-        "generation_models_configured",
-        openai_model=normalize_openai_model(analyzer.settings.openai_model),
-        gemini_model=normalize_gemini_image_model(styler.settings.gemini_image_model),
-        claude_model=normalize_claude_model(captioner.settings.claude_model),
-    )
+    validator = ProductValidator(threshold=0.6)
 
     with SessionLocal() as session:
         post = session.get(Post, post_id)
         if not post:
             logger.error("post_not_found", post_id=post_id)
             return
+        brand_id = post.brand_id if brand_id is None else brand_id
+        if post.brand_id != brand_id:
+            logger.error("brand_scope_violation", post_id=post_id, expected_brand_id=brand_id, actual_brand_id=post.brand_id)
+            return
+        analyzer = OpenAIReferenceAnalyzer(brand_id=brand_id)
+        captioner = ClaudeCaptionWriter(brand_id=brand_id)
+        styler = GeminiStyler(brand_id=brand_id)
+        logger.info(
+            "generation_models_configured",
+            openai_model=normalize_openai_model(analyzer.settings.openai_model),
+            gemini_model=normalize_gemini_image_model(styler.settings.gemini_image_model),
+            claude_model=normalize_claude_model(captioner.settings.claude_model),
+            brand_id=brand_id,
+        )
 
         if post.status == PostStatus.CANCELLED.value:
             return
@@ -111,7 +117,7 @@ def run_generation_pipeline(post_id: int, chat_id: int) -> None:
         session.commit()
 
         try:
-            with stage_run(session, post_id, JobStage.DOWNLOAD):
+            with stage_run(session, post_id, JobStage.DOWNLOAD, brand_id):
                 reference = downloader.download_post(post.reference_url or "")
                 post.reference_image = reference.image_urls[0]
                 post.source_caption = reference.caption
@@ -119,15 +125,15 @@ def run_generation_pipeline(post_id: int, chat_id: int) -> None:
                 post.source_image_urls = reference.image_urls
                 session.commit()
 
-            with stage_run(session, post_id, JobStage.ANALYZE):
+            with stage_run(session, post_id, JobStage.ANALYZE, brand_id):
                 style_brief = analyzer.analyze_reference(post.reference_image or "", post.source_caption)
                 post.style_brief = style_brief.model_dump()
                 session.commit()
 
-            with stage_run(session, post_id, JobStage.STYLE):
-                saree_sources = _resolve_saree_sources(post)
-                if not saree_sources:
-                    raise PipelineError("No saree photo found for this post")
+            with stage_run(session, post_id, JobStage.STYLE, brand_id):
+                product_sources = _resolve_product_sources(post)
+                if not product_sources:
+                    raise PipelineError("No product photo found for this post")
 
                 reference_urls = list(post.source_image_urls or [])
                 if not reference_urls and post.reference_image:
@@ -137,20 +143,20 @@ def run_generation_pipeline(post_id: int, chat_id: int) -> None:
                     post.media_type = "carousel"
 
                 variants = styler.generate_variants(
-                    saree_image_url=saree_sources[0],
+                    product_image_url=product_sources[0],
                     reference_image_urls=reference_urls,
                     style_brief=style_brief,
                     overlay_text=None,
                 )
 
-                existing = session.query(PostVariant).filter(PostVariant.post_id == post_id).all()
+                existing = session.query(PostVariant).filter(PostVariant.brand_id == brand_id, PostVariant.post_id == post_id).all()
                 for old_variant in existing:
                     for old_item in old_variant.items:
                         session.delete(old_item)
                     session.delete(old_variant)
                 session.commit()
 
-                original_bytes = _fetch_bytes(saree_sources[0])
+                original_bytes = _fetch_bytes(product_sources[0])
 
                 persisted_preview_urls: list[str] = []
                 low_ssim_variants: list[int] = []
@@ -166,6 +172,7 @@ def run_generation_pipeline(post_id: int, chat_id: int) -> None:
                             threshold=validator.threshold,
                         )
                     record = PostVariant(
+                        brand_id=brand_id,
                         post_id=post_id,
                         variant_index=variant.variant_index,
                         preview_url=variant.preview_url,
@@ -176,22 +183,22 @@ def run_generation_pipeline(post_id: int, chat_id: int) -> None:
                     session.flush()
                     for idx, image_url in enumerate(variant.item_urls, start=1):
                         session.add(
-                            PostVariantItem(variant_id=record.id, position=idx, image_url=image_url)
+                            PostVariantItem(brand_id=brand_id, variant_id=record.id, position=idx, image_url=image_url)
                         )
                     persisted_preview_urls.append(variant.preview_url)
 
                 if low_ssim_variants:
                     logger.warning(
-                        "saree_preservation_warning",
+                        "product_preservation_warning",
                         post_id=post_id,
                         low_ssim_variants=low_ssim_variants,
-                        message="Some variants may have altered the saree. Human review recommended.",
+                        message="Some variants may have altered the product. Human review recommended.",
                     )
 
                 post.styled_image = persisted_preview_urls[0]
                 session.commit()
 
-            with stage_run(session, post_id, JobStage.CAPTION):
+            with stage_run(session, post_id, JobStage.CAPTION, brand_id):
                 caption_package = captioner.generate_caption(
                     styled_image_url=post.styled_image or "",
                     style_brief=style_brief,
@@ -203,28 +210,20 @@ def run_generation_pipeline(post_id: int, chat_id: int) -> None:
                 post.status = PostStatus.REVIEW_READY.value
                 session.commit()
 
-            with stage_run(session, post_id, JobStage.REVIEW):
+            with stage_run(session, post_id, JobStage.REVIEW, brand_id):
                 all_variants = (
                     session.query(PostVariant)
-                    .filter(PostVariant.post_id == post_id)
+                    .filter(PostVariant.brand_id == brand_id, PostVariant.post_id == post_id)
                     .order_by(PostVariant.variant_index.asc())
                     .limit(3)
                     .all()
                 )
-                # Send all generated images (all carousel items) for review
-                all_image_urls: list[str] = []
-                for variant in all_variants:
-                    items = (
-                        session.query(PostVariantItem)
-                        .filter(PostVariantItem.variant_id == variant.id)
-                        .order_by(PostVariantItem.position.asc())
-                        .all()
-                    )
-                    all_image_urls.extend(item.image_url for item in items)
+                preview_urls = [variant.preview_url for variant in all_variants if variant.preview_url]
                 send_review_package(
+                    brand_id=brand_id,
                     chat_id=chat_id,
                     post_id=post.id,
-                    image_urls=all_image_urls,
+                    image_urls=preview_urls,
                     caption=post.caption or "",
                     hashtags=post.hashtags or "",
                 )
@@ -235,31 +234,33 @@ def run_generation_pipeline(post_id: int, chat_id: int) -> None:
             post.error_code = exc.error_code
             post.error_message = str(exc)
             session.commit()
-            send_text(chat_id, exc.user_message)
+            send_text(brand_id, chat_id, exc.user_message)
             logger.warning("pipeline_error", post_id=post_id, error_code=exc.error_code, error=str(exc))
         except Exception as exc:
             post.status = PostStatus.FAILED.value
             post.error_code = "internal_error"
             post.error_message = str(exc)
             session.commit()
-            send_text(chat_id, "Something unexpected happened. Please retry.")
+            send_text(brand_id, chat_id, "Something unexpected happened. Please retry.")
             logger.exception("pipeline_unhandled_error", post_id=post_id, error=str(exc))
 
 
-def run_caption_rewrite(post_id: int, chat_id: int, rewrite_instruction: str) -> None:
-    captioner = ClaudeCaptionWriter()
-
+def run_caption_rewrite(post_id: int, chat_id: int, rewrite_instruction: str, brand_id: int | None = None) -> None:
     with SessionLocal() as session:
         post = session.get(Post, post_id)
         if not post or not post.style_brief or not post.styled_image:
             return
+        brand_id = post.brand_id if brand_id is None else brand_id
+        if post.brand_id != brand_id:
+            return
+        captioner = ClaudeCaptionWriter(brand_id=brand_id)
 
         brief = dict(post.style_brief)
         brief["adaptation_notes"] = f"Rewrite instruction from user: {rewrite_instruction}"
         style_brief = StyleBrief.model_validate(brief)
 
         try:
-            with stage_run(session, post_id, JobStage.CAPTION):
+            with stage_run(session, post_id, JobStage.CAPTION, brand_id):
                 package = captioner.generate_caption(
                     styled_image_url=post.styled_image,
                     style_brief=style_brief,
@@ -271,20 +272,26 @@ def run_caption_rewrite(post_id: int, chat_id: int, rewrite_instruction: str) ->
                 post.status = PostStatus.REVIEW_READY.value
                 session.commit()
 
-            send_text(chat_id, "Updated caption is ready. Reply 'approve' or 'post now'.")
+            send_text(brand_id, chat_id, "Updated caption is ready. Reply 'approve' or 'post now'.")
         except PipelineError as exc:
-            send_text(chat_id, exc.user_message)
+            send_text(brand_id, chat_id, exc.user_message)
         except Exception:
-            send_text(chat_id, "Caption rewrite failed. Please try again.")
+            send_text(brand_id, chat_id, "Caption rewrite failed. Please try again.")
 
 
-def run_publish(post_id: int, chat_id: int, posted_by: str, poster_client) -> None:
+def run_publish(post_id: int, chat_id: int, posted_by: str, poster_client, brand_id: int | None = None) -> None:
     with SessionLocal() as session:
         post = session.get(Post, post_id)
         if not post:
             return
+        brand_id = post.brand_id if brand_id is None else brand_id
+        if post.brand_id != brand_id:
+            return
         if post.status == PostStatus.POSTED.value:
-            send_text(chat_id, f"Already posted: {post.instagram_url}")
+            send_text(brand_id, chat_id, f"Already posted: {post.instagram_url}")
+            return
+        if post.status not in {PostStatus.APPROVED.value, PostStatus.SCHEDULED.value, PostStatus.REVIEW_READY.value}:
+            send_text(brand_id, chat_id, f"Post is in '{post.status}' state and cannot be published yet.")
             return
 
         post.status = PostStatus.APPROVED.value
@@ -292,10 +299,10 @@ def run_publish(post_id: int, chat_id: int, posted_by: str, poster_client) -> No
         session.commit()
 
         try:
-            with stage_run(session, post_id, JobStage.POST):
+            with stage_run(session, post_id, JobStage.POST, brand_id):
                 if post.media_type == "reel":
                     if not post.video_url:
-                        send_text(chat_id, "No video found for this post.")
+                        send_text(brand_id, chat_id, "No video found for this post.")
                         return
 
                     publish_video_url = post.video_url
@@ -335,16 +342,20 @@ def run_publish(post_id: int, chat_id: int, posted_by: str, poster_client) -> No
                 else:
                     variant = (
                         session.query(PostVariant)
-                        .filter(PostVariant.post_id == post_id, PostVariant.variant_index == (post.selected_variant_index or 1))
+                        .filter(
+                            PostVariant.brand_id == brand_id,
+                            PostVariant.post_id == post_id,
+                            PostVariant.variant_index == (post.selected_variant_index or 1),
+                        )
                         .first()
                     )
                     if not variant:
-                        send_text(chat_id, "Please select a variant first (1, 2, or 3).")
+                        send_text(brand_id, chat_id, "Please select a variant first (1, 2, or 3).")
                         return
                     if post.media_type == "carousel":
                         items = (
                             session.query(PostVariantItem)
-                            .filter(PostVariantItem.variant_id == variant.id)
+                            .filter(PostVariantItem.brand_id == brand_id, PostVariantItem.variant_id == variant.id)
                             .order_by(PostVariantItem.position.asc())
                             .all()
                         )
@@ -369,19 +380,19 @@ def run_publish(post_id: int, chat_id: int, posted_by: str, poster_client) -> No
             post.status = PostStatus.POSTED.value
             session.commit()
 
-            send_text(chat_id, f"Posted successfully: {post.instagram_url}")
+            send_text(brand_id, chat_id, f"Posted successfully: {post.instagram_url}")
         except PipelineError as exc:
             post.status = PostStatus.FAILED.value
             post.error_code = exc.error_code
             post.error_message = str(exc)
             session.commit()
-            send_text(chat_id, exc.user_message)
+            send_text(brand_id, chat_id, exc.user_message)
         except Exception as exc:
             post.status = PostStatus.FAILED.value
             post.error_code = "publish_error"
             post.error_message = str(exc)
             session.commit()
-            send_text(chat_id, "Posting failed. You can retry with 'post now'.")
+            send_text(brand_id, chat_id, "Posting failed. You can retry with 'post now'.")
 
 
 def purge_old_reference_images(days: int, storage_client) -> int:
@@ -398,23 +409,20 @@ def purge_old_reference_images(days: int, storage_client) -> int:
     return deleted
 
 
-def notify_token_expiry(chat_id: int, expiry_text: str) -> None:
-    send_text(chat_id, f"Meta page token is nearing expiry ({expiry_text}). Refresh it this week.")
+def notify_token_expiry(chat_id: int, expiry_text: str, brand_id: int | None = None) -> None:
+    send_text(brand_id, chat_id, f"Meta page token is nearing expiry ({expiry_text}). Refresh it this week.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # VIDEO / REEL PIPELINE
 # ══════════════════════════════════════════════════════════════════════════════
 
-def run_video_generation_pipeline(post_id: int, chat_id: int) -> None:
+def run_video_generation_pipeline(post_id: int, chat_id: int, brand_id: int | None = None) -> None:
     """Full video generation pipeline — download → analyze → style start frame → Veo → caption → review."""
     downloader = DataBrightDownloader()
-    analyzer = OpenAIReferenceAnalyzer()
-    styler = GeminiStyler()
     veo = VeoGenerator()
-    captioner = ClaudeCaptionWriter()
-    validator = SareeValidator(threshold=0.6)
-    video_validator = SareeValidator(threshold=0.7)
+    validator = ProductValidator(threshold=0.6)
+    video_validator = ProductValidator(threshold=0.7)
     storage = R2StorageClient()
 
     with SessionLocal() as session:
@@ -422,6 +430,12 @@ def run_video_generation_pipeline(post_id: int, chat_id: int) -> None:
         if not post:
             logger.error("post_not_found", post_id=post_id)
             return
+        brand_id = post.brand_id if brand_id is None else brand_id
+        if post.brand_id != brand_id:
+            return
+        analyzer = OpenAIReferenceAnalyzer(brand_id=brand_id)
+        captioner = ClaudeCaptionWriter(brand_id=brand_id)
+        styler = GeminiStyler(brand_id=brand_id)
 
         if post.status == PostStatus.CANCELLED.value:
             return
@@ -434,7 +448,7 @@ def run_video_generation_pipeline(post_id: int, chat_id: int) -> None:
 
         try:
             # ── Step 1: Download ──
-            with stage_run(session, post_id, JobStage.DOWNLOAD):
+            with stage_run(session, post_id, JobStage.DOWNLOAD, brand_id):
                 reference = downloader.download_post(post.reference_url or "")
                 post.reference_image = reference.image_urls[0] if reference.image_urls else reference.thumbnail_url
                 post.source_caption = reference.caption
@@ -443,7 +457,7 @@ def run_video_generation_pipeline(post_id: int, chat_id: int) -> None:
                 session.commit()
 
             # ── Step 2: Analyze (with video fields) ──
-            with stage_run(session, post_id, JobStage.ANALYZE):
+            with stage_run(session, post_id, JobStage.ANALYZE, brand_id):
                 style_brief = analyzer.analyze_reference(
                     post.reference_image or "",
                     post.source_caption,
@@ -457,24 +471,24 @@ def run_video_generation_pipeline(post_id: int, chat_id: int) -> None:
                 session.commit()
 
             # ── Step 3: Style Start Frame (9:16) ──
-            with stage_run(session, post_id, JobStage.STYLE):
-                saree_sources = _resolve_saree_sources(post)
-                if not saree_sources:
-                    raise PipelineError("No saree photo found for this post")
+            with stage_run(session, post_id, JobStage.STYLE, brand_id):
+                product_sources = _resolve_product_sources(post)
+                if not product_sources:
+                    raise PipelineError("No product photo found for this post")
 
                 reference_urls = list(post.source_image_urls or [])
                 if not reference_urls and post.reference_image:
                     reference_urls = [post.reference_image]
 
                 variants = styler.generate_variants(
-                    saree_image_url=saree_sources[0],
+                    product_image_url=product_sources[0],
                     reference_image_urls=reference_urls,
                     style_brief=style_brief,
                     overlay_text=None,
                 )
 
                 if variants:
-                    original_bytes = _fetch_bytes(saree_sources[0])
+                    original_bytes = _fetch_bytes(product_sources[0])
                     generated_bytes = _fetch_bytes(variants[0].preview_url)
                     is_valid, score = validator.verify_preserved(original_bytes, generated_bytes)
 
@@ -483,7 +497,7 @@ def run_video_generation_pipeline(post_id: int, chat_id: int) -> None:
                     session.commit()
 
             # ── Step 4: Generate Video (Veo 3.1) ──
-            with stage_run(session, post_id, JobStage.VIDEO_GENERATE):
+            with stage_run(session, post_id, JobStage.VIDEO_GENERATE, brand_id):
                 # Download the styled frame to a temp file for Veo
                 import tempfile
                 from pathlib import Path
@@ -532,6 +546,7 @@ def run_video_generation_pipeline(post_id: int, chat_id: int) -> None:
                         video_urls.append(video_s3_url)
 
                         job = VideoJob(
+                            brand_id=brand_id,
                             post_id=post_id,
                             variation_number=idx,
                             video_url=video_s3_url,
@@ -553,7 +568,7 @@ def run_video_generation_pipeline(post_id: int, chat_id: int) -> None:
                             logger.warning("tmp_cleanup_failed", path=path)
 
             # ── Step 5: Caption (Reel mode) ──
-            with stage_run(session, post_id, JobStage.CAPTION):
+            with stage_run(session, post_id, JobStage.CAPTION, brand_id):
                 caption_package = captioner.generate_caption(
                     styled_image_url=post.styled_image or "",
                     style_brief=style_brief,
@@ -569,15 +584,16 @@ def run_video_generation_pipeline(post_id: int, chat_id: int) -> None:
                 session.commit()
 
             # ── Step 6: Send for Review ──
-            with stage_run(session, post_id, JobStage.REVIEW):
+            with stage_run(session, post_id, JobStage.REVIEW, brand_id):
                 video_jobs = (
                     session.query(VideoJob)
-                    .filter(VideoJob.post_id == post_id, VideoJob.status == "done")
+                    .filter(VideoJob.brand_id == brand_id, VideoJob.post_id == post_id, VideoJob.status == "done")
                     .order_by(VideoJob.variation_number.asc())
                     .all()
                 )
                 video_review_urls = [j.video_url for j in video_jobs if j.video_url]
                 send_video_review_package(
+                    brand_id=brand_id,
                     chat_id=chat_id,
                     post_id=post.id,
                     video_urls=video_review_urls,
@@ -592,29 +608,32 @@ def run_video_generation_pipeline(post_id: int, chat_id: int) -> None:
             post.error_code = exc.error_code
             post.error_message = str(exc)
             session.commit()
-            send_text(chat_id, exc.user_message)
+            send_text(brand_id, chat_id, exc.user_message)
             logger.warning("video_pipeline_error", post_id=post_id, error_code=exc.error_code, error=str(exc))
         except Exception as exc:
             post.status = PostStatus.FAILED.value
             post.error_code = "internal_error"
             post.error_message = str(exc)
             session.commit()
-            send_text(chat_id, "Something unexpected happened with video generation. Please retry.")
+            send_text(brand_id, chat_id, "Something unexpected happened with video generation. Please retry.")
             logger.exception("video_pipeline_unhandled_error", post_id=post_id, error=str(exc))
 
 
-def run_reel_this_conversion(post_id: int, chat_id: int) -> None:
+def run_reel_this_conversion(post_id: int, chat_id: int, brand_id: int | None = None) -> None:
     """Convert an already-styled image post into a Reel (skip Steps 1-3, start from Veo)."""
     veo = VeoGenerator()
-    captioner = ClaudeCaptionWriter()
-    video_validator = SareeValidator(threshold=0.7)
+    video_validator = ProductValidator(threshold=0.7)
     storage = R2StorageClient()
 
     with SessionLocal() as session:
         post = session.get(Post, post_id)
         if not post or not post.styled_image:
-            send_text(chat_id, "No styled image available to convert to a Reel.")
+            send_text(brand_id, chat_id, "No styled image available to convert to a Reel.")
             return
+        brand_id = post.brand_id if brand_id is None else brand_id
+        if post.brand_id != brand_id:
+            return
+        captioner = ClaudeCaptionWriter(brand_id=brand_id)
 
         post.media_type = "reel"
         post.status = PostStatus.PROCESSING.value
@@ -624,7 +643,7 @@ def run_reel_this_conversion(post_id: int, chat_id: int) -> None:
             style_brief = StyleBrief.model_validate(post.style_brief or {})
             style_brief.composition.aspect_ratio = "9:16"
 
-            with stage_run(session, post_id, JobStage.VIDEO_GENERATE):
+            with stage_run(session, post_id, JobStage.VIDEO_GENERATE, brand_id):
                 import tempfile
                 from pathlib import Path
 
@@ -671,6 +690,7 @@ def run_reel_this_conversion(post_id: int, chat_id: int) -> None:
                         video_s3_url = storage.upload_bytes(video_key, video_bytes, content_type="video/mp4")
                         video_urls.append(video_s3_url)
                         session.add(VideoJob(
+                            brand_id=brand_id,
                             post_id=post_id,
                             variation_number=idx,
                             video_url=video_s3_url,
@@ -690,7 +710,7 @@ def run_reel_this_conversion(post_id: int, chat_id: int) -> None:
                         except Exception:
                             logger.warning("tmp_cleanup_failed", path=path)
 
-            with stage_run(session, post_id, JobStage.CAPTION):
+            with stage_run(session, post_id, JobStage.CAPTION, brand_id):
                 caption_package = captioner.generate_caption(
                     styled_image_url=post.styled_image,
                     style_brief=style_brief,
@@ -707,12 +727,13 @@ def run_reel_this_conversion(post_id: int, chat_id: int) -> None:
 
             video_jobs = (
                 session.query(VideoJob)
-                .filter(VideoJob.post_id == post_id, VideoJob.status == "done")
+                .filter(VideoJob.brand_id == brand_id, VideoJob.post_id == post_id, VideoJob.status == "done")
                 .order_by(VideoJob.variation_number.asc())
                 .all()
             )
             video_review_urls = [j.video_url for j in video_jobs if j.video_url]
             send_video_review_package(
+                brand_id=brand_id,
                 chat_id=chat_id,
                 post_id=post.id,
                 video_urls=video_review_urls,
@@ -721,19 +742,19 @@ def run_reel_this_conversion(post_id: int, chat_id: int) -> None:
                 hashtags=post.hashtags or "",
             )
 
-            send_text(chat_id, "Reel is ready for review!")
+            send_text(brand_id, chat_id, "Reel is ready for review!")
         except PipelineError as exc:
             post.status = PostStatus.FAILED.value
             session.commit()
-            send_text(chat_id, exc.user_message)
+            send_text(brand_id, chat_id, exc.user_message)
         except Exception as exc:
             post.status = PostStatus.FAILED.value
             session.commit()
-            send_text(chat_id, "Reel conversion failed. Please try again.")
+            send_text(brand_id, chat_id, "Reel conversion failed. Please try again.")
             logger.exception("reel_this_error", post_id=post_id, error=str(exc))
 
 
-def run_video_extension(post_id: int, chat_id: int, video_variation: int = 1) -> None:
+def run_video_extension(post_id: int, chat_id: int, video_variation: int = 1, brand_id: int | None = None) -> None:
     """Extend a selected video by 8 more seconds."""
     veo = VeoGenerator()
     storage = R2StorageClient()
@@ -742,20 +763,23 @@ def run_video_extension(post_id: int, chat_id: int, video_variation: int = 1) ->
         post = session.get(Post, post_id)
         if not post:
             return
+        brand_id = post.brand_id if brand_id is None else brand_id
+        if post.brand_id != brand_id:
+            return
 
         video_job = (
             session.query(VideoJob)
-            .filter(VideoJob.post_id == post_id, VideoJob.variation_number == video_variation)
+            .filter(VideoJob.brand_id == brand_id, VideoJob.post_id == post_id, VideoJob.variation_number == video_variation)
             .first()
         )
         if not video_job or not video_job.video_url:
-            send_text(chat_id, "No video found to extend.")
+            send_text(brand_id, chat_id, "No video found to extend.")
             return
 
-        send_text(chat_id, "Extending video by 8 seconds. This will take ~3 minutes...")
+        send_text(brand_id, chat_id, "Extending video by 8 seconds. This will take ~3 minutes...")
 
         try:
-            with stage_run(session, post_id, JobStage.VIDEO_EXTEND):
+            with stage_run(session, post_id, JobStage.VIDEO_EXTEND, brand_id):
                 import tempfile
                 video_bytes = _fetch_bytes(video_job.video_url)
                 with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tf:
@@ -778,9 +802,9 @@ def run_video_extension(post_id: int, chat_id: int, video_variation: int = 1) ->
                 post.video_duration = (post.video_duration or 8) + 8
                 session.commit()
 
-            send_text(chat_id, f"Extended to {post.video_duration}s. Reply 'approve' to post, or 'extend' for more.")
+            send_text(brand_id, chat_id, f"Extended to {post.video_duration}s. Reply 'approve' to post, or 'extend' for more.")
         except PipelineError as exc:
-            send_text(chat_id, exc.user_message)
+            send_text(brand_id, chat_id, exc.user_message)
         except Exception as exc:
-            send_text(chat_id, "Video extension failed. You can still post the original clip.")
+            send_text(brand_id, chat_id, "Video extension failed. You can still post the original clip.")
             logger.exception("video_extension_error", post_id=post_id, error=str(exc))

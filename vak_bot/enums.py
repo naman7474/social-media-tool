@@ -6,6 +6,7 @@ class PostStatus(str, Enum):
     PROCESSING = "processing"
     REVIEW_READY = "review_ready"
     APPROVED = "approved"
+    SCHEDULED = "scheduled"
     POSTED = "posted"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -19,6 +20,8 @@ class MediaType(str, Enum):
 
 class VideoType(str, Enum):
     FABRIC_FLOW = "fabric-flow"
+    PRODUCT_MOTION = "product-motion"
+    DETAIL_ZOOM = "detail-zoom"
     CLOSE_UP = "close-up"
     LIFESTYLE = "lifestyle"
     REVEAL = "reveal"

@@ -3,6 +3,7 @@ from vak_bot.pipeline.caption_writer import ClaudeCaptionWriter
 from vak_bot.pipeline.downloader import DataBrightDownloader
 from vak_bot.pipeline.gemini_styler import GeminiStyler
 from vak_bot.pipeline.poster import MetaGraphPoster
+from vak_bot.pipeline.product_validator import ProductValidator
 from vak_bot.pipeline.saree_validator import SareeValidator
 
 __all__ = [
@@ -11,5 +12,6 @@ __all__ = [
     "GeminiStyler",
     "ClaudeCaptionWriter",
     "MetaGraphPoster",
+    "ProductValidator",
     "SareeValidator",
 ]

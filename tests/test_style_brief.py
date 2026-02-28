@@ -18,7 +18,7 @@ def test_style_brief_validation() -> None:
         "background": {
             "type": "textured",
             "description": "Soft linen texture",
-            "suggested_bg_for_saree": "Warm neutral fabric with marigolds",
+            "suggested_background": "Warm neutral fabric with soft handcrafted accents",
         },
         "lighting": "natural-soft",
         "text_overlay": {
@@ -35,3 +35,21 @@ def test_style_brief_validation() -> None:
     brief = StyleBrief.model_validate(payload)
     assert brief.layout_type == "flat-lay"
     assert brief.composition.aspect_ratio == "4:5"
+
+
+def test_style_brief_accepts_legacy_background_key() -> None:
+    brief = StyleBrief.model_validate(
+        {
+            "layout_type": "flat-lay",
+            "color_mood": {
+                "temperature": "warm",
+                "dominant_colors": ["#AABBCC"],
+                "palette_name": "earthy",
+            },
+            "background": {
+                "suggested_bg_for_saree": "Neutral backdrop",
+            },
+            "vibe_words": ["warm", "artisan"],
+        }
+    )
+    assert brief.background.suggested_background == "Neutral backdrop"

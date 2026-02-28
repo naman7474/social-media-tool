@@ -4,6 +4,7 @@ aiogram
 sqlalchemy
 alembic
 psycopg[binary]
+psycopg2-binary
 celery[redis]
 redis
 httpx
@@ -19,3 +20,6 @@ numpy
 pytest
 pytest-asyncio
 respx
+cryptography
+argon2-cffi
+jinja2

@@ -28,9 +28,13 @@ class StylingError(PipelineError):
     user_message = "Styling is taking longer. Trying a different approach..."
 
 
-class SareePreservationError(PipelineError):
-    error_code = "saree_preservation_failed"
+class ProductPreservationError(PipelineError):
+    error_code = "product_preservation_failed"
     user_message = "The styled image didn't look right. Let me try again with a different approach..."
+
+
+# Backward-compat alias
+SareePreservationError = ProductPreservationError
 
 
 class CaptionError(PipelineError):
@@ -41,6 +45,14 @@ class CaptionError(PipelineError):
 class PublishError(PipelineError):
     error_code = "publish_error"
     user_message = "Posting failed. I've saved your post — want me to try again or you can post manually?"
+
+
+class PublishCredentialsError(PublishError):
+    error_code = "publish_credentials_error"
+    user_message = (
+        "Publishing is blocked because Meta credentials are missing for this brand. "
+        "Please configure brand credentials in Admin and retry."
+    )
 
 
 class VeoGenerationError(PipelineError):

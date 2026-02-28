@@ -1,27 +1,24 @@
-You are also analyzing this reference for VIDEO generation.
-In addition to the standard style_brief fields, add:
+You are also analyzing this reference for video generation for {brand_name}.
 
-{
-  ... (all existing fields from image pipeline) ...
+Use brand context:
+- Product: {product_singular}
+- Colors: {primary_color} / {secondary_color}
+- Display styles: {display_styles}
+- Props: {props_library}
+- Aesthetic exclusions: {aesthetic_exclusions}
 
-  "video_analysis": {
-    "camera_motion": "slow-pan | zoom-in | zoom-out | orbit | tilt-up | tilt-down | static | tracking",
-    "motion_type": "fabric-flow | model-walk | reveal | product-rotate | parallax | morph",
-    "motion_elements": "What should be moving? e.g., 'fabric flowing in breeze', 'camera slowly zooming into brushwork detail', 'pallu lifting and falling'",
-    "pacing": "slow-dreamy | medium-editorial | fast-energetic",
-    "audio_mood": "ambient-nature | soft-classical | modern-minimal | upbeat | silence",
-    "transition_style": "none | fade | cut | zoom-through",
-    "recommended_duration": "4 | 6 | 8",
-    "recommended_video_type": "fabric-flow | close-up | lifestyle | reveal",
-    "video_adaptation_notes": "How to adapt this reference style into a saree video. E.g., 'The reference uses a slow zoom on jewelry — for a saree, zoom into the painted motif detail then pull back to show full drape.'"
-  }
-}
+In addition to the normal style brief fields, include video_analysis with:
+- camera_motion
+- motion_type
+- motion_elements
+- pacing
+- audio_mood
+- transition_style
+- recommended_duration
+- recommended_video_type (choose from: fabric-flow, close-up, lifestyle, reveal, product-motion, detail-zoom)
+- video_adaptation_notes
 
-IMPORTANT for video analysis:
-- For saree videos, fabric movement is always the hero. Suggest motion
-  that showcases the hand-painting: gentle breeze, slow unfurling, light play.
-- If the reference is a Reel/video, describe the camera movement and pacing
-  you observe. If it's a static image, suggest video movement that would
-  complement the mood.
-- Always suggest SLOW or MEDIUM pacing for luxury handmade products.
-  Fast pacing feels cheap — Vâk is the opposite.
+Guidelines:
+- Motion should emphasize real material behavior and detail.
+- Recommend slow or medium pacing unless the reference clearly requires faster pacing.
+- Keep suggestions aligned with {brand_name} visual identity and guardrails.

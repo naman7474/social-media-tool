@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import asyncio
 
-from aiogram import Bot
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, InputMediaVideo
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 
 from vak_bot.bot.callbacks import make_callback
-from vak_bot.config import get_settings
+from vak_bot.bot.runtime import get_bot_for_brand
 from vak_bot.enums import CallbackAction
 
 
@@ -17,28 +16,26 @@ def _run(coro):
         loop = None
 
     if loop and loop.is_running():
-        # Inside a running loop (e.g. Celery worker) — run in a new thread
-        # to avoid conflicts and ensure proper awaiting.
         import concurrent.futures
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(asyncio.run, coro)
             return future.result(timeout=120)
     return asyncio.run(coro)
 
 
-def _bot() -> Bot:
-    settings = get_settings()
-    return Bot(token=settings.telegram_bot_token)
+def _choice_buttons(post_id: int, option_count: int, action: CallbackAction) -> list[InlineKeyboardButton]:
+    capped = max(1, min(3, option_count))
+    return [
+        InlineKeyboardButton(text=str(idx), callback_data=make_callback(post_id, idx, action))
+        for idx in range(1, capped + 1)
+    ]
 
 
-def build_review_keyboard(post_id: int) -> InlineKeyboardMarkup:
+def build_review_keyboard(post_id: int, option_count: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(text="1", callback_data=make_callback(post_id, 1, CallbackAction.SELECT)),
-                InlineKeyboardButton(text="2", callback_data=make_callback(post_id, 2, CallbackAction.SELECT)),
-                InlineKeyboardButton(text="3", callback_data=make_callback(post_id, 3, CallbackAction.SELECT)),
-            ],
+            _choice_buttons(post_id, option_count, CallbackAction.SELECT),
             [
                 InlineKeyboardButton(
                     text="Edit Caption",
@@ -54,46 +51,41 @@ def build_review_keyboard(post_id: int) -> InlineKeyboardMarkup:
     )
 
 
-async def _send_text_async(chat_id: int, text: str) -> None:
-    bot = _bot()
-    try:
-        await bot.send_message(chat_id=chat_id, text=text)
-    finally:
-        await bot.session.close()
+async def _send_text_async(brand_id: int | None, chat_id: int, text: str) -> None:
+    bot = get_bot_for_brand(brand_id)
+    await bot.send_message(chat_id=chat_id, text=text)
 
 
-def send_text(chat_id: int, text: str) -> None:
-    _run(_send_text_async(chat_id, text))
+def send_text(brand_id: int | None, chat_id: int, text: str) -> None:
+    _run(_send_text_async(brand_id, chat_id, text))
 
 
-async def _send_review_async(chat_id: int, post_id: int, image_urls: list[str], caption: str, hashtags: str) -> None:
-    bot = _bot()
-    try:
-        media = [InputMediaPhoto(media=url) for url in image_urls[:3] if url]
-        if media:
-            await bot.send_media_group(chat_id=chat_id, media=media)
+async def _send_review_async(brand_id: int | None, chat_id: int, post_id: int, image_urls: list[str], caption: str, hashtags: str) -> None:
+    bot = get_bot_for_brand(brand_id)
+    media = [InputMediaPhoto(media=url) for url in image_urls[:3] if url]
+    option_count = len(media)
+    if media:
+        await bot.send_media_group(chat_id=chat_id, media=media)
+    else:
+        option_count = 1
 
-        message = (
-            "Here are your options for this post:\n\n"
-            f"Caption:\n\"{caption}\"\n\n"
-            f"Hashtags:\n{hashtags}\n\n"
-            "Reply with 1, 2, or 3; or use the buttons below."
-        )
-        await bot.send_message(chat_id=chat_id, text=message, reply_markup=build_review_keyboard(post_id))
-    finally:
-        await bot.session.close()
-
-
-def send_review_package(chat_id: int, post_id: int, image_urls: list[str], caption: str, hashtags: str) -> None:
-    _run(_send_review_async(chat_id, post_id, image_urls, caption, hashtags))
+    message = (
+        "Here are your options for this post:\n\n"
+        f"Caption:\n\"{caption}\"\n\n"
+        f"Hashtags:\n{hashtags}\n\n"
+        f"Reply with 1-{option_count}; or use the buttons below."
+    )
+    await bot.send_message(chat_id=chat_id, text=message, reply_markup=build_review_keyboard(post_id, option_count))
 
 
-def build_video_review_keyboard(post_id: int) -> InlineKeyboardMarkup:
+def send_review_package(brand_id: int | None, chat_id: int, post_id: int, image_urls: list[str], caption: str, hashtags: str) -> None:
+    _run(_send_review_async(brand_id, chat_id, post_id, image_urls, caption, hashtags))
+
+
+def build_video_review_keyboard(post_id: int, option_count: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(text="1", callback_data=make_callback(post_id, 1, CallbackAction.SELECT_VIDEO)),
-            ],
+            _choice_buttons(post_id, option_count, CallbackAction.SELECT_VIDEO),
             [
                 InlineKeyboardButton(text="Extend", callback_data=make_callback(post_id, 0, CallbackAction.EXTEND)),
                 InlineKeyboardButton(
@@ -111,6 +103,7 @@ def build_video_review_keyboard(post_id: int) -> InlineKeyboardMarkup:
 
 
 async def _send_video_review_async(
+    brand_id: int | None,
     chat_id: int,
     post_id: int,
     video_urls: list[str],
@@ -118,28 +111,26 @@ async def _send_video_review_async(
     caption: str,
     hashtags: str,
 ) -> None:
-    bot = _bot()
-    try:
-        # Send start frame as context
-        if start_frame_url:
-            await bot.send_photo(chat_id=chat_id, photo=start_frame_url, caption="🖼 Start frame")
+    bot = get_bot_for_brand(brand_id)
+    option_count = max(1, min(3, len(video_urls)))
 
-        # Send video variation(s)
-        for idx, url in enumerate(video_urls[:1], start=1):
-            await bot.send_video(chat_id=chat_id, video=url, caption=f"Option {idx}")
+    if start_frame_url:
+        await bot.send_photo(chat_id=chat_id, photo=start_frame_url, caption="Start frame")
 
-        message = (
-            "🎬 Here is your Reel preview:\n\n"
-            f'Caption:\n"{caption}"\n\n'
-            f"Hashtags:\n{hashtags}\n\n"
-            "Reply with 1 to select, or use the buttons below."
-        )
-        await bot.send_message(chat_id=chat_id, text=message, reply_markup=build_video_review_keyboard(post_id))
-    finally:
-        await bot.session.close()
+    for idx, url in enumerate(video_urls[:3], start=1):
+        await bot.send_video(chat_id=chat_id, video=url, caption=f"Option {idx}")
+
+    message = (
+        "Here is your Reel preview:\n\n"
+        f'Caption:\n"{caption}"\n\n'
+        f"Hashtags:\n{hashtags}\n\n"
+        f"Reply with 1-{option_count} to select, or use the buttons below."
+    )
+    await bot.send_message(chat_id=chat_id, text=message, reply_markup=build_video_review_keyboard(post_id, option_count))
 
 
 def send_video_review_package(
+    brand_id: int | None,
     chat_id: int,
     post_id: int,
     video_urls: list[str],
@@ -147,4 +138,4 @@ def send_video_review_package(
     caption: str,
     hashtags: str,
 ) -> None:
-    _run(_send_video_review_async(chat_id, post_id, video_urls, start_frame_url, caption, hashtags))
+    _run(_send_video_review_async(brand_id, chat_id, post_id, video_urls, start_frame_url, caption, hashtags))

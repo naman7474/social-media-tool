@@ -13,19 +13,24 @@ Production-oriented v1 implementation of the PRD in `PRD.md`.
 ## Implemented v1 Scope
 
 - `/start`, `/help`
+- Multi-brand tenancy foundation (`brand_id`) with per-brand Telegram bot config
 - Intake: Instagram/Pinterest link + photo(s), or link + product code
 - Product code lookup from DB
 - Carousel support when multiple source photos are provided
 - Pipeline: DataBright -> OpenAI style brief -> Gemini variants (3) -> SSIM check -> Claude caption
 - Approval actions: `1|2|3`, `edit caption`, `redo`, `approve`, `cancel`, `post now`
 - Immediate Instagram publish via Meta Graph API
+- Scheduling support (`scheduled` status + Celery minute dispatcher)
 - Security: allowlist, daily post cap (10 per user)
 - Reliability: retries, user-friendly errors, token refresh + expiry alert, ref image cleanup
+- Admin API (`/admin/*`) for auth, brand management, onboarding validation, calendar, and audit logs
+- Minimal admin UI at `/admin/ui` with brand tabs
+- Admin login page at `/admin/login`
 
 ## Deferred from v1
 
-- Scheduling and queue commands (`schedule`, `/queue`, `/recent`, `/stats`, `/cancel [id]`)
 - Facebook cross-post
+- Reel performance analytics (views/reach by post)
 
 ## Quick Start
 
@@ -48,6 +53,12 @@ alembic upgrade head
 ```
 
 4. Set Telegram webhook to:
+
+```text
+https://<your-domain>/webhooks/telegram/<brand-slug>
+```
+
+Legacy single-brand path remains available:
 
 ```text
 https://<your-domain>/webhooks/telegram

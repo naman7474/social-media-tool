@@ -12,7 +12,7 @@ from vak_bot.pipeline.llm_utils import (
     normalize_claude_model,
     parse_json_object,
 )
-from vak_bot.pipeline.prompts import load_caption_prompt
+from vak_bot.pipeline.prompts import load_brand_config, load_caption_prompt
 from vak_bot.schemas import CaptionPackage, ReelCaptionPackage, StyleBrief
 
 logger = structlog.get_logger(__name__)
@@ -31,15 +31,15 @@ REEL CAPTION STRUCTURE:
 REEL-SPECIFIC RULES:
 - Shorter overall (150-200 words max, not 200-300)
 - First line is everything — it shows during autoplay. Make it count.
-- Add 2-3 Reels-discovery hashtags: #reelsinstagram #fashionreels #sareedraping #handpaintedfashion
+- Add 2-3 relevant Reels-discovery hashtags aligned to the brand category.
 - Suggest a cover frame description (for the Reels thumbnail)
 - If the video has native audio, caption should acknowledge the sensory experience
 
 GOOD REEL HOOKS:
-- "Three days of painting. Eight seconds of magic."
-- "This is what hand-painted looks like in motion."
-- "No two pieces will ever move the same way."
-- "The brushwork you can't see in photos."
+- "Built with intent. Captured in motion."
+- "What detail did you notice first?"
+- "A closer look at the craft in motion."
+- "The texture you miss in still photos."
 
 Return as JSON with additional fields:
 {
@@ -53,44 +53,52 @@ Return as JSON with additional fields:
 
 
 class ClaudeCaptionWriter:
-    def __init__(self) -> None:
+    def __init__(self, brand_id: int | None = None) -> None:
         self.settings = get_settings()
+        self.brand_id = brand_id
 
     def generate_caption(self, styled_image_url: str, style_brief: StyleBrief, product_info: dict, is_reel: bool = False) -> CaptionPackage:
+        brand_cfg = load_brand_config(self.brand_id)
+        hashtags_cfg = brand_cfg.get("hashtags", {}) if isinstance(brand_cfg.get("hashtags", {}), dict) else {}
+        product_type = str(product_info.get("product_type") or "").strip()
+        product_hashtag_key = "product" if product_type else "product_other"
+        hashtag_pool = (
+            list(hashtags_cfg.get("brand_always", []))
+            + list(hashtags_cfg.get("craft", []))[:6]
+            + list(hashtags_cfg.get(product_hashtag_key, []))[:6]
+            + list(hashtags_cfg.get("discovery", []))[:6]
+        )
+        hashtag_pool = list(dict.fromkeys(tag for tag in hashtag_pool if isinstance(tag, str) and tag.strip()))
+        dry_run_hashtags = " ".join(hashtag_pool[:24]) if hashtag_pool else "#brand #handmade #crafted"
+
         if self.settings.dry_run:
-            hashtags = (
-                "#vakstudios #handpaintedsaree #vakclothing #silksaree #artisanmade "
-                "#oneofone #sareelovers #slowfashionindia #craftedwithlove #handpaintedfashion "
-                "#weddingguest #diwarifashion #indianfashion #handloomlove #limitededition "
-                "#madebyhands #wearart #sareestyle #shopindian #consciousfashion"
-            )
             if is_reel:
                 return ReelCaptionPackage(
                     caption=(
-                        "Three days of painting. Eight seconds of magic. "
-                        "This hand-painted Vâk saree was built slowly by hand."
+                        "Built by hand. Made to be remembered. "
+                        "This piece was crafted slowly so every detail feels intentional."
                     ),
-                    hashtags=hashtags + " #reelsinstagram #fashionreels #sareedraping",
-                    alt_text="Video showing a hand-painted saree in motion, fabric flowing gently.",
+                    hashtags=dry_run_hashtags + " #reelsinstagram #reelvideo",
+                    alt_text="Video showing a handcrafted product in motion with soft, premium lighting.",
                     overlay_text=None,
-                    cover_frame_description="The moment the pallu catches light",
+                    cover_frame_description="The moment the hero detail catches light",
                     thumb_offset_ms=3000,
                 )
             return CaptionPackage(
                 caption=(
-                    "Some pieces don't just dress you, they speak for you. "
-                    "This hand-painted Vâk saree was built slowly by hand so every brushstroke stays personal. "
-                    "Wear it for an evening celebration or when you simply want to feel unmistakably like yourself."
+                    "Some pieces do more than look good, they make a point quietly. "
+                    "This one was made slowly by hand so every detail still feels personal and real. "
+                    "Wear it when you want to feel confident without trying too hard."
                 ),
-                hashtags=hashtags,
-                alt_text="Hand-painted saree in warm tones styled on a textured Indian-inspired background with brass props.",
+                hashtags=dry_run_hashtags,
+                alt_text="Handcrafted product styled in warm tones on a textured, premium background.",
                 overlay_text=None,
             )
 
         if not self.settings.anthropic_api_key:
             raise CaptionError("Missing ANTHROPIC_API_KEY")
 
-        prompt = load_caption_prompt()
+        prompt = load_caption_prompt(self.brand_id)
         if is_reel:
             prompt += "\n\n" + _REEL_CAPTION_ADDON
         model = normalize_claude_model(self.settings.claude_model)
@@ -146,6 +154,7 @@ class ClaudeCaptionWriter:
                             "text": (
                                 f"Style brief: {style_brief.model_dump_json()}\n"
                                 f"Product details: {json.dumps(product_info)}\n\n"
+                                f"Brand config JSON: {json.dumps({'brand': brand_cfg.get('brand', {}), 'hashtags': hashtags_cfg, 'caption_rules': brand_cfg.get('caption_rules', {}), 'cta_rotation': brand_cfg.get('cta_rotation', [])})}\n\n"
                                 "Generate a caption package for this styled image."
                             ),
                         },
