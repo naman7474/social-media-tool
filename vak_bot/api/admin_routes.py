@@ -209,8 +209,11 @@ def _set_auth_cookies(response: Response, user_id: int) -> str:
     session_token = create_session_token(user_id)
     csrf_token = create_csrf_token(user_id)
     secure_cookie = settings.secure_cookies
-    response.set_cookie("admin_session", session_token, httponly=True, secure=secure_cookie, samesite="lax", max_age=8 * 3600)
-    response.set_cookie("admin_csrf", csrf_token, httponly=False, secure=secure_cookie, samesite="lax", max_age=8 * 3600)
+    # Use samesite="none" for cross-domain (Vercel frontend → Railway backend)
+    # Requires secure=True in production
+    samesite_policy = "none" if secure_cookie else "lax"
+    response.set_cookie("admin_session", session_token, httponly=True, secure=secure_cookie, samesite=samesite_policy, max_age=8 * 3600)
+    response.set_cookie("admin_csrf", csrf_token, httponly=False, secure=secure_cookie, samesite=samesite_policy, max_age=8 * 3600)
     return csrf_token
 
 
